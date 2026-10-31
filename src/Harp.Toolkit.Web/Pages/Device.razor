@@ -4,6 +4,7 @@
 @attribute [SupportedOSPlatform("browser")]
 @implements IDisposable
 @inject DeviceSession Session
+@inject IJSRuntime JS
 
 <PageTitle>Device · Harp.Toolkit</PageTitle>
 
@@ -35,7 +36,7 @@ else
             <div class="status-line status-error" role="alert">@Icons.Error <span>@modeError</span></div>
         }
 
-        <main class="workspace device-workspace">
+        <main class="workspace device-workspace @(dockCollapsed ? "dock-collapsed" : null)" @ref="workspace">
             <section class="pane" aria-label="Registers">
                 <RegisterList Selected="selected" OnSelect="Select" />
             </section>
@@ -63,8 +64,11 @@ else
                 </div>
             </section>
 
-            <section class="pane" aria-label="Messages">
-                <MessageLog OnSelect="Select" />
+            <section class="pane dock" aria-label="Messages">
+                <div class="dock-handle" role="separator" aria-orientation="horizontal" aria-label="Resize the message log"
+                     tabindex="0" title="Drag to resize the message log" hidden="@dockCollapsed" @ref="dockHandle"></div>
+                <MessageLog OnSelect="Select" SelectedAddress="selected" SelectedName="@SelectedRegister?.Name"
+                            Collapsed="dockCollapsed" OnToggleCollapsed="() => dockCollapsed = !dockCollapsed" />
             </section>
         </main>
     </div>
@@ -74,6 +78,18 @@ else
     int? selected;
     bool busy;
     string? modeError;
+    bool dockCollapsed;
+    ElementReference workspace;
+    ElementReference dockHandle;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Session.IsSupported)
+        {
+            var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/dock.js");
+            await module.InvokeVoidAsync("initDock", dockHandle, workspace);
+        }
+    }
 
     RegisterSchema? SelectedRegister =>
         selected is { } address ? Session.Schema.Registers.GetValueOrDefault(address) : null;

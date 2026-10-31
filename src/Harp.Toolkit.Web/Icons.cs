@@ -23,6 +23,8 @@ static class Icons
     public static readonly MarkupString Check = Svg(
         "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m9 12 2 2 4-4\"/>");
 
+    public static readonly MarkupString CheckMark = Svg("<path d=\"M20 6 9 17l-5-5\"/>");
+
     public static readonly MarkupString Error = Svg(
         "<circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"12\" x2=\"12\" y1=\"8\" y2=\"12\"/><line x1=\"12\" x2=\"12.01\" y1=\"16\" y2=\"16\"/>");
 

@@ -10,151 +10,302 @@
 
 <PageTitle>Firmware · Harp.Toolkit</PageTitle>
 
-<div class="device-page">
-@if (Session.IsSupported)
-{
-    <DeviceBar />
-}
-<main class="workspace">
+<main class="workflow-page">
     @if (!Session.IsSupported)
     {
-        <UnsupportedBrowser />
+        <div class="workspace"><UnsupportedBrowser /></div>
     }
     else
     {
-        <section class="pane" aria-label="Firmware update">
-            <div class="panel-body">
-                <section class="card">
-                    <h2>Firmware file</h2>
-                    <p class="hint">
-                        An Intel HEX file named as Harp releases are, for example
-                        <code>Behavior-fw1.2-harp1.13-hw2.0-ass0.hex</code>. The name says which device and hardware it supports.
-                    </p>
-                    <div class="row">
-                        <label class="btn">
-                            @Icons.Open Open .hex
-                            <InputFile accept=".hex" class="visually-hidden" OnChange="OnFileSelectedAsync" disabled="@updating" />
-                        </label>
-                        @if (fileName is not null)
+        <div class="workflow">
+            <header class="workflow-header">
+                <h1>Update firmware</h1>
+                <p>Installs a firmware release on an ATxmega Harp device over USB. The device restarts into its bootloader during the update.</p>
+            </header>
+
+            <ol class="steps">
+                @* Step 1: the device *@
+                <li class="step @StepClass(1)">
+                    <div class="step-marker" aria-hidden="true">@StepMarker(1)</div>
+                    <div class="step-body">
+                        <div class="step-title">
+                            <h2>Connect the device</h2>
+                            @if (DeviceReady && !updating && result is null)
+                            {
+                                <button class="link-button" @onclick="ChangeDeviceAsync">Change</button>
+                            }
+                        </div>
+                        @if (Session.IsConnected && Session.Identity is { } identity)
                         {
-                            <span class="detail">@fileName</span>
+                            <p class="step-summary">
+                                <strong>@identity.DisplayName</strong> · firmware @identity.FirmwareVersion · hardware @identity.HardwareVersion
+                                @if (identity.SerialNumber is { } serial)
+                                {
+                                    <text> · SN @serial.ToString("x4")</text>
+                                }
+                            </p>
+                        }
+                        else if (CurrentStep == 4 && updatedDevice is not null)
+                        {
+                            <p class="step-summary">@updatedDevice</p>
+                        }
+                        else if (recovery && Session.Port is not null)
+                        {
+                            <p class="step-summary">
+                                <strong>@Session.PortLabel</strong> · not answering, updating without checking the device
+                                <button class="link-button" @onclick="() => recovery = false">Try connecting instead</button>
+                            </p>
+                        }
+                        else if (CurrentStep == 1)
+                        {
+                            <p class="hint">Plug the device in over USB, then pick its serial port.</p>
+                            <div class="row">
+                                <button class="btn btn-primary" disabled="@(Session.State is SessionState.Connecting or SessionState.Busy)" @onclick="Session.SelectPortAsync">
+                                    @Icons.Plug @(Session.Port is null ? "Select port" : "Select another port")
+                                </button>
+                                @if (Session.Port is not null)
+                                {
+                                    <button class="btn" disabled="@(Session.State != SessionState.Disconnected)" @onclick="Session.ConnectAsync">
+                                        @(Session.State == SessionState.Connecting ? "Connecting…" : $"Connect to {Session.PortLabel}")
+                                    </button>
+                                }
+                            </div>
+                            @if (Session.Error is { } error)
+                            {
+                                <div class="status-line status-error" role="alert">@Icons.Error <span>@error</span></div>
+                            }
+                            @if (Session.Port is not null && Session.State == SessionState.Disconnected)
+                            {
+                                <p class="hint">
+                                    Device not answering? After a failed update it can stay in its bootloader, where it cannot connect.
+                                    <button class="link-button" @onclick="() => recovery = true">Update it anyway</button>
+                                </p>
+                            }
                         }
                     </div>
-                    @if (fileError is not null)
-                    {
-                        <div class="status-line status-error" role="alert">@Icons.Error <span>@fileError</span></div>
-                    }
-                    @if (firmware is not null)
-                    {
-                        <dl class="kv">
-                            <dt>Device</dt><dd>@firmware.Metadata.DeviceName</dd>
-                            <dt>Firmware</dt><dd>@firmware.Metadata.FirmwareVersion@(firmware.Metadata.PrereleaseVersion is { } pre ? $" (prerelease {pre})" : null)</dd>
-                            <dt>Hardware</dt><dd>@firmware.Metadata.HardwareVersion</dd>
-                            <dt>Harp core</dt><dd>@firmware.Metadata.CoreVersion</dd>
-                            <dt>Image size</dt><dd>@(firmware.Data.Length / 1024) KiB</dd>
-                        </dl>
-                    }
-                </section>
+                </li>
 
-                <section class="card">
-                    <h2>Update</h2>
-                    @if (Session.Identity is { } identity && Session.State == SessionState.Connected)
-                    {
-                        <p>
-                            Connected to <strong>@identity.DisplayName</strong>, hardware @identity.HardwareVersion,
-                            firmware @identity.FirmwareVersion.
-                        </p>
-                        @if (firmware is not null)
-                        {
-                            @if (firmware.Metadata.Supports(identity.DeviceName ?? "", identity.HardwareVersion))
+                @* Step 2: the file *@
+                <li class="step @StepClass(2)">
+                    <div class="step-marker" aria-hidden="true">@StepMarker(2)</div>
+                    <div class="step-body">
+                        <div class="step-title">
+                            <h2>Choose the firmware file</h2>
+                            @if (firmware is not null && CurrentStep > 2 && !updating && result is null)
                             {
-                                <div class="status-line status-ok">@Icons.Check <span>This firmware supports the connected device.</span></div>
+                                <button class="link-button" @onclick="ClearFile">Change</button>
                             }
-                            else
+                        </div>
+                        @if (firmware is not null && CurrentStep > 2)
+                        {
+                            <p class="step-summary">
+                                <strong>@firmware.Metadata.DeviceName @firmware.Metadata.FirmwareVersion</strong>
+                                · for hardware @firmware.Metadata.HardwareVersion · <span class="detail">@fileName</span>
+                            </p>
+                        }
+                        else if (CurrentStep == 2)
+                        {
+                            <label class="dropzone">
+                                <InputFile accept=".hex" OnChange="OnFileSelectedAsync" />
+                                @Icons.Upload
+                                <span><strong>Choose a .hex file</strong> or drop it here</span>
+                                <small>Harp release files are named like <code>Behavior-fw1.2-harp1.13-hw2.0-ass0.hex</code>; the name says which device and hardware they are for.</small>
+                            </label>
+                            @if (fileError is not null)
                             {
-                                <div class="status-line status-warn">@Icons.Warning <span>This firmware is for @firmware.Metadata.DeviceName with hardware @firmware.Metadata.HardwareVersion, not the connected device.</span></div>
+                                <div class="status-line status-error" role="alert">@Icons.Error <span>@fileError</span></div>
                             }
                         }
-                    }
-                    else if (Session.State != SessionState.Busy)
-                    {
-                        <p class="hint">Connect the device to check that the firmware supports it. A device stuck in its bootloader cannot connect: select its port and update with the check skipped.</p>
-                    }
-
-                    <label class="field check">
-                        <input type="checkbox" @bind="force" disabled="@updating" />
-                        <span>Skip the device check (for a device stuck in its bootloader, or a renamed device)</span>
-                    </label>
-
-                    <div class="row">
-                        <button class="btn btn-primary" disabled="@(!CanUpdate)" @onclick="UpdateAsync">@Icons.Upload Update firmware</button>
                     </div>
+                </li>
 
-                    @if (updating || progress is not null)
-                    {
-                        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@(progress?.Percent ?? 0)">
-                            <div style="width: @(progress?.Percent ?? 0)%"></div>
-                        </div>
-                        <p class="hint">@StageText</p>
-                    }
-                    @if (updating)
-                    {
-                        <div class="status-line status-warn" role="status">@Icons.Warning <span>Keep the device plugged in and this page open until the update finishes.</span></div>
-                    }
-                    @if (result is not null)
-                    {
-                        <div class="status-line @(resultError ? "status-error" : "status-ok")" role="status">
-                            @(resultError ? Icons.Error : Icons.Check) <span>@result</span>
-                        </div>
-                    }
-                </section>
-            </div>
-        </section>
+                @* Step 3: confirmation *@
+                <li class="step @StepClass(3)">
+                    <div class="step-marker" aria-hidden="true">@StepMarker(3)</div>
+                    <div class="step-body">
+                        <div class="step-title"><h2>Confirm the update</h2></div>
+                        @if (CurrentStep == 3 && firmware is not null)
+                        {
+                            <div class="version-change">
+                                <div>
+                                    <span class="label">Installed</span>
+                                    <strong>@(Session.Identity?.FirmwareVersion?.ToString() ?? "unknown")</strong>
+                                </div>
+                                <span class="arrow" aria-hidden="true">→</span>
+                                <div>
+                                    <span class="label">New</span>
+                                    <strong>@firmware.Metadata.FirmwareVersion</strong>
+                                </div>
+                            </div>
 
-        <section class="pane" aria-label="Messages">
-            <MessageLog />
-        </section>
+                            @switch (Compatibility)
+                            {
+                                case Fit.Supported:
+                                    <div class="status-line status-ok">@Icons.Check <span>Made for this device and hardware version.</span></div>
+                                    break;
+                                case Fit.Unsupported:
+                                    <div class="status-line status-error">@Icons.Error <span>This file is for @firmware.Metadata.DeviceName with hardware @firmware.Metadata.HardwareVersion, but the device is @Session.Identity?.DisplayName with hardware @Session.Identity?.HardwareVersion. Installing it can leave the device unusable until the right firmware is installed.</span></div>
+                                    <label class="field check">
+                                        <input type="checkbox" @bind="overrideCheck" />
+                                        <span>Install it anyway</span>
+                                    </label>
+                                    break;
+                                default:
+                                    <div class="status-line status-warn">@Icons.Warning <span>The device was not checked. Make sure this file is for @firmware.Metadata.DeviceName hardware @firmware.Metadata.HardwareVersion.</span></div>
+                                    break;
+                            }
+                            @if (VersionNote is { } note)
+                            {
+                                <p class="hint">@note</p>
+                            }
+
+                            <label class="field check confirm">
+                                <input type="checkbox" @bind="confirmed" />
+                                <span>I understand the device restarts, and must stay plugged in with this page open until the update finishes.</span>
+                            </label>
+                            <div class="row">
+                                <button class="btn btn-primary" disabled="@(!CanStart)" @onclick="UpdateAsync">@Icons.Upload Update firmware</button>
+                            </div>
+                        }
+                    </div>
+                </li>
+
+                @* Step 4: the update *@
+                <li class="step @StepClass(4)">
+                    <div class="step-marker" aria-hidden="true">@StepMarker(4)</div>
+                    <div class="step-body">
+                        <div class="step-title"><h2>Update</h2></div>
+                        @if (CurrentStep == 4)
+                        {
+                            <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@(progress?.Percent ?? 0)">
+                                <div class="@(resultError ? "failed" : null)" style="width: @(progress?.Percent ?? 0)%"></div>
+                            </div>
+                            <ul class="stages">
+                                @foreach (var (stage, label) in Stages)
+                                {
+                                    <li class="@StageClass(stage)">@label</li>
+                                }
+                            </ul>
+                            @if (updating)
+                            {
+                                <p class="hint">Keep the device plugged in and this page open.</p>
+                            }
+                            @if (result is not null)
+                            {
+                                <div class="status-line @(resultError ? "status-error" : "status-ok")" role="status">
+                                    @(resultError ? Icons.Error : Icons.Check) <span>@result</span>
+                                </div>
+                                <div class="row">
+                                    @if (resultError)
+                                    {
+                                        <button class="btn btn-primary" @onclick="Retry">Try again</button>
+                                    }
+                                    <button class="btn" @onclick="StartOver">Update another device</button>
+                                </div>
+                            }
+                        }
+                    </div>
+                </li>
+            </ol>
+        </div>
     }
 </main>
-</div>
 
 @code {
     const long MaxFileSize = 4 * 1024 * 1024;
 
+    enum Fit { Supported, Unsupported, Unchecked }
+
+    static readonly (UpdateStage Stage, string Label)[] Stages =
+    [
+        (UpdateStage.Connect, "Connect to the device"),
+        (UpdateStage.Check, "Check the firmware supports it"),
+        (UpdateStage.Reset, "Restart it into the bootloader"),
+        (UpdateStage.Bootloader, "Connect to the bootloader"),
+        (UpdateStage.Write, "Write the firmware"),
+        (UpdateStage.Restart, "Start the new firmware")
+    ];
+
     DeviceFirmware? firmware;
     string? fileName;
     string? fileError;
-    bool force;
+    bool recovery;
+    string? updatedDevice;
+    bool confirmed;
+    bool overrideCheck;
     bool updating;
     UpdateProgress? progress;
     string? result;
     bool resultError;
 
-    bool CanUpdate => firmware is not null && !updating && Session.Port is not null &&
-        Session.State is SessionState.Connected or SessionState.Disconnected;
+    bool DeviceReady => Session.IsConnected || (recovery && Session.Port is not null);
 
-    string StageText => progress?.Stage switch
+    int CurrentStep =>
+        updating || result is not null ? 4 :
+        !DeviceReady ? 1 :
+        firmware is null ? 2 : 3;
+
+    Fit Compatibility =>
+        firmware is null || !Session.IsConnected || Session.Identity is null ? Fit.Unchecked :
+        firmware.Metadata.Supports(Session.Identity.DeviceName ?? "", Session.Identity.HardwareVersion) ? Fit.Supported : Fit.Unsupported;
+
+    bool CanStart => firmware is not null && confirmed && (Compatibility != Fit.Unsupported || overrideCheck);
+
+    string? VersionNote
     {
-        UpdateStage.Connect => "Connecting to the device…",
-        UpdateStage.Check => "Checking that the firmware supports the device…",
-        UpdateStage.Reset => "Restarting the device into its bootloader…",
-        UpdateStage.Bootloader => "Connecting to the bootloader…",
-        UpdateStage.Write => $"Writing the firmware… {progress?.Percent}%",
-        UpdateStage.Restart => "Starting the new firmware…",
-        _ => "Starting…"
-    };
+        get
+        {
+            if (firmware is null || Session.Identity?.FirmwareVersion is not { } installed || Compatibility != Fit.Supported)
+                return null;
+            var comparison = firmware.Metadata.FirmwareVersion.CompareTo(installed);
+            return comparison == 0 ? "This version is already installed; updating reinstalls it."
+                : comparison < 0 ? "This is an older version than the one installed."
+                : null;
+        }
+    }
+
+    bool Succeeded => result is not null && !resultError;
+
+    string StepClass(int step) =>
+        step < CurrentStep || (step == 4 && Succeeded) ? "done" : step == CurrentStep ? "current" : "upcoming";
+
+    MarkupString StepMarker(int step) =>
+        step < CurrentStep || (step == 4 && Succeeded) ? Icons.CheckMark : new MarkupString(step.ToString());
+
+    string StageClass(UpdateStage stage)
+    {
+        if (progress is not { } current)
+            return "pending";
+        if (stage < current.Stage || (stage == current.Stage && result is not null && !resultError))
+            return "done";
+        if (stage == current.Stage)
+            return resultError ? "failed" : "active";
+        return "pending";
+    }
 
     protected override void OnInitialized() => Session.Changed += OnChanged;
 
     void OnChanged() => InvokeAsync(StateHasChanged);
 
-    async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    async Task ChangeDeviceAsync()
+    {
+        recovery = false;
+        confirmed = false;
+        await Session.DisconnectAsync();
+    }
+
+    void ClearFile()
     {
         firmware = null;
+        fileName = null;
+        confirmed = false;
+        overrideCheck = false;
+    }
+
+    async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        ClearFile();
         fileError = null;
-        result = null;
-        progress = null;
-        fileName = e.File.Name;
         try
         {
             using var buffer = new MemoryStream();
@@ -164,18 +315,23 @@
             }
             buffer.Position = 0;
             firmware = AtxmegaBootloader.ReadFirmware(e.File.Name, buffer);
+            fileName = e.File.Name;
         }
         catch (Exception ex) when (ex is ArgumentException or FormatException or NotSupportedException or IOException)
         {
-            fileError = $"This is not a Harp firmware file. {ex.Message}";
+            fileError = $"{e.File.Name} is not a Harp firmware file. {ex.Message}";
         }
     }
 
     async Task UpdateAsync()
     {
-        if (firmware is null)
+        if (firmware is null || !CanStart)
             return;
 
+        // The update takes over the connection, so remember which device it is for.
+        updatedDevice = Session.Identity is { } device && Session.IsConnected
+            ? $"{device.DisplayName} · firmware {device.FirmwareVersion} · hardware {device.HardwareVersion}"
+            : $"{Session.PortLabel} · in its bootloader";
         updating = true;
         result = null;
         resultError = false;
@@ -186,24 +342,44 @@
             StateHasChanged();
         });
 
+        // Skip the device check when the user overrode it, or when the device could not connect.
+        var force = overrideCheck || !Session.IsConnected;
         try
         {
             await Session.RunExclusiveAsync(
                 port => AtxmegaBootloader.UpdateFirmwareAsync(port, firmware, force, reporter),
                 reconnectDelay: TimeSpan.FromSeconds(1));
-            result = Session.Identity is { } identity && Session.State == SessionState.Connected
-                ? $"Updated. The device now reports firmware {identity.FirmwareVersion}."
-                : "Updated. Connect the device to check the new firmware version.";
+            result = Session.IsConnected && Session.Identity is { } identity
+                ? $"Updated. {identity.DisplayName} now reports firmware {identity.FirmwareVersion}."
+                : "Updated, but the device did not reconnect. Unplug it, plug it back in and connect to check the version.";
+            recovery = false;
         }
         catch (Exception ex) when (ex is HarpException or TimeoutException or IOException or InvalidOperationException)
         {
             resultError = true;
-            result = $"The update failed. {ex.Message}";
+            result = $"The update failed: {ex.Message} If the device stopped answering, it is waiting in its bootloader: try again, and choose \"Update it anyway\" if it cannot connect.";
         }
         finally
         {
             updating = false;
         }
+    }
+
+    void Retry()
+    {
+        result = null;
+        progress = null;
+        confirmed = false;
+        if (!Session.IsConnected)
+            recovery = true;
+    }
+
+    void StartOver()
+    {
+        result = null;
+        progress = null;
+        recovery = false;
+        ClearFile();
     }
 
     public void Dispose() => Session.Changed -= OnChanged;

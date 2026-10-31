@@ -14,12 +14,24 @@
             <button role="radio" aria-checked="@(filter == option ? "true" : "false")" @onclick="() => SetFilter(option)">@option</button>
         }
     </div>
+    @if (SelectedName is not null)
+    {
+        <label class="field check" title="Show only messages from @SelectedName">
+            <input type="checkbox" checked="@onlySelected" @onchange="ToggleOnlySelected" />
+            <span>Only @SelectedName</span>
+        </label>
+    }
     <span class="spacer"></span>
     <span class="file-meta">@rate.ToString("0", CultureInfo.InvariantCulture)/s</span>
     <button class="btn" @onclick="TogglePause" title="@(paused ? "Show new messages again" : "Stop adding new messages")">@(paused ? "Resume" : "Pause")</button>
     <button class="btn" @onclick="Clear">Clear</button>
+    @if (OnToggleCollapsed.HasDelegate)
+    {
+        <button class="btn" @onclick="OnToggleCollapsed" aria-expanded="@(Collapsed ? "false" : "true")"
+                title="@(Collapsed ? "Show the message log" : "Hide the message log")">@(Collapsed ? "Show" : "Hide")</button>
+    }
 </div>
-<div class="log" role="log" aria-live="off">
+<div class="log" role="log" aria-live="off" hidden="@Collapsed">
     @if (visible.Count == 0)
     {
         <div class="empty">
@@ -34,7 +46,7 @@
     {
         <table>
             <thead>
-                <tr><th>Time (s)</th><th>Type</th><th>Register</th><th>Value</th></tr>
+                <tr><th>Time (s)</th><th>Type</th><th>Register</th><th>Value</th><th class="hide-narrow">Bytes</th></tr>
             </thead>
             <tbody>
                 @foreach (var entry in visible)
@@ -45,6 +57,7 @@
                         <td><span class="type type-@entry.Type.ToLowerInvariant()">@entry.Type</span></td>
                         <td title="Address @entry.Address">@entry.Register</td>
                         <td class="payload">@entry.Payload</td>
+                        <td class="bytes hide-narrow">@entry.Bytes</td>
                     </tr>
                 }
             </tbody>
@@ -67,9 +80,41 @@
     long countSinceRate;
     double rate;
 
+    bool onlySelected;
+
     [Parameter] public EventCallback<int> OnSelect { get; set; }
 
-    record LogEntry(string Time, string Type, int Address, string Register, string Payload, bool Error, bool IsEvent);
+    /// <summary>The address of the register selected on the page, which the log can filter to.</summary>
+    [Parameter] public int? SelectedAddress { get; set; }
+
+    /// <summary>The name of the selected register, or <see langword="null"/> to hide the filter.</summary>
+    [Parameter] public string? SelectedName { get; set; }
+
+    [Parameter] public bool Collapsed { get; set; }
+
+    [Parameter] public EventCallback OnToggleCollapsed { get; set; }
+
+    record LogEntry(string Time, string Type, int Address, string Register, string Payload, string Bytes, bool Error, bool IsEvent);
+
+    int? shownAddress;
+
+    protected override void OnParametersSet()
+    {
+        // Follow the selection while filtering to it.
+        if (shownAddress != SelectedAddress)
+        {
+            shownAddress = SelectedAddress;
+            dirty = true;
+            Refresh();
+        }
+    }
+
+    void ToggleOnlySelected()
+    {
+        onlySelected = !onlySelected;
+        dirty = true;
+        Refresh();
+    }
 
     protected override void OnInitialized()
     {
@@ -115,6 +160,7 @@
             message.Address,
             register?.Name ?? message.Address.ToString(CultureInfo.InvariantCulture),
             payload,
+            Convert.ToHexString(message.GetPayload()),
             message.Error,
             message.MessageType == MessageType.Event);
     }
@@ -135,12 +181,14 @@
 
         dirty = false;
         visible.Clear();
-        visible.AddRange(entries.Where(entry => filter switch
-        {
-            "Events" => entry.IsEvent,
-            "Replies" => !entry.IsEvent,
-            _ => true
-        }));
+        visible.AddRange(entries.Where(entry =>
+            (!onlySelected || SelectedName is null || entry.Address == SelectedAddress) &&
+            filter switch
+            {
+                "Events" => entry.IsEvent,
+                "Replies" => !entry.IsEvent,
+                _ => true
+            }));
         StateHasChanged();
     }
 

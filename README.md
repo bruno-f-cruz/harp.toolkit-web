@@ -6,7 +6,7 @@
 |---|---|---|
 | **Generate** | Generates the C# and Python interfaces and the firmware of a device from its `device.yml` | All |
 | **Device** | Connects to a device over USB serial and builds a control panel for it from its `device.yml`: every register gets controls for its payload (checkboxes for bit masks, choices for group masks, switches, text and number fields with their limits), filled from a live read. Also shows the device identity, switches it between Standby and Active, and decodes every message it sends | Chrome, Edge |
-| **Firmware** | Updates the firmware of an ATxmega device from a `.hex` release file, checking first that the file supports the device | Chrome, Edge |
+| **Firmware** | Updates the firmware of an ATxmega device from a `.hex` release file, as four steps: connect the device, choose the file, confirm (installed and new version side by side, with hardware and downgrade checks), and update. Also recovers a device left in its bootloader | Chrome, Edge |
 
 The device pages use the [Web Serial API](https://developer.mozilla.org/docs/Web/API/Web_Serial_API), which only Chromium-based desktop browsers implement, and only on pages served over HTTPS or from `localhost`.
 

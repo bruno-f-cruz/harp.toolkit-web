@@ -102,9 +102,26 @@
         Register.HasEvents ? "Event" : null
     }.Where(text => text is not null));
 
+    HarpMessage? shownMessage;
+
     protected override void OnInitialized()
     {
-        refresh = new Timer(_ => InvokeAsync(() => { if (Session.IsConnected) StateHasChanged(); }), null, RefreshMilliseconds, RefreshMilliseconds);
+        refresh = new Timer(_ => InvokeAsync(() =>
+        {
+            if (!Session.IsConnected)
+                return;
+            // Until the user edits a field, the fields follow the latest value from the device.
+            if (!edited && Session.GetLatest(Register.Address) is { } latest && !ReferenceEquals(latest, shownMessage))
+                ShowMessage(latest);
+            StateHasChanged();
+        }), null, RefreshMilliseconds, RefreshMilliseconds);
+    }
+
+    void ShowMessage(HarpMessage message)
+    {
+        shownMessage = message;
+        if (TryDecode(message) is { } decoded)
+            values = decoded;
     }
 
     protected override async Task OnParametersSetAsync()
@@ -115,9 +132,10 @@
         shown = Register;
         status = null;
         edited = false;
-        values = Session.GetLatest(Register.Address) is { } latest && TryDecode(latest) is { } decoded
-            ? decoded
-            : PayloadCodec.CreateDefault(Register);
+        shownMessage = null;
+        values = PayloadCodec.CreateDefault(Register);
+        if (Session.GetLatest(Register.Address) is { } latest)
+            ShowMessage(latest);
         if (Session.IsConnected)
             await ReadAsync();
     }
@@ -131,8 +149,8 @@
         try
         {
             var reply = await connection.CommandAsync(HarpCommand.Read(Register.Address, Register.Type));
-            if (!edited && TryDecode(reply) is { } decoded)
-                values = decoded;
+            if (!edited)
+                ShowMessage(reply);
             SetStatus(null, error: false);
         }
         catch (Exception ex) when (ex is HarpException or TimeoutException or IOException)
@@ -177,9 +195,9 @@
     void ResetToLatest()
     {
         edited = false;
-        values = Session.GetLatest(Register.Address) is { } latest && TryDecode(latest) is { } decoded
-            ? decoded
-            : PayloadCodec.CreateDefault(Register);
+        values = PayloadCodec.CreateDefault(Register);
+        if (Session.GetLatest(Register.Address) is { } latest)
+            ShowMessage(latest);
     }
 
     Dictionary<string, FieldValue>? TryDecode(HarpMessage message)
