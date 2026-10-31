@@ -21,6 +21,10 @@
             <span>Only @SelectedName</span>
         </label>
     }
+    <div class="segmented" role="radiogroup" aria-label="Show the frame as" title="Show each message as its bytes, or as the fields of its frame header">
+        <button role="radio" aria-checked="@(showFields ? "false" : "true")" @onclick="() => showFields = false">Hex</button>
+        <button role="radio" aria-checked="@(showFields ? "true" : "false")" @onclick="() => showFields = true">Fields</button>
+    </div>
     <span class="spacer"></span>
     <span class="file-meta">@rate.ToString("0", CultureInfo.InvariantCulture)/s</span>
     <button class="btn" @onclick="TogglePause" title="@(paused ? "Show new messages again" : "Stop adding new messages")">@(paused ? "Resume" : "Pause")</button>
@@ -31,22 +35,6 @@
                 title="@(Collapsed ? "Show the message log" : "Hide the message log")">@(Collapsed ? "Show" : "Hide")</button>
     }
 </div>
-@if (inspected is { } frame && !Collapsed)
-{
-    <div class="log-inspector">
-        <div class="log-inspector-header">
-            <span class="label">Frame</span>
-            <span class="detail">@frame.Type · @frame.Register@(frame.Time.Length > 0 ? $" · {frame.Time} s" : null)</span>
-            <span class="spacer"></span>
-            @if (OnSelect.HasDelegate)
-            {
-                <button class="link-button" @onclick="() => OnSelect.InvokeAsync(frame.Address)">Open @frame.Register</button>
-            }
-            <button class="btn btn-icon btn-ghost" title="Close the frame" aria-label="Close the frame" @onclick="() => inspected = null">✕</button>
-        </div>
-        <FrameView Message="frame.Message" Register="Session.Schema.Registers.GetValueOrDefault(frame.Address)" />
-    </div>
-}
 <div class="log" role="log" aria-live="off" hidden="@Collapsed">
     @if (visible.Count == 0)
     {
@@ -64,35 +52,39 @@
             <thead>
                 <tr>
                     <th>Time (s)</th><th>Type</th><th>Register</th><th>Value</th>
-                    <th class="hide-narrow">
-                        Frame
-                        <span class="frame-legend" aria-hidden="true">
-                            @foreach (var (field, label) in Legend)
-                            {
-                                <span class="fb fb-@field">@label</span>
-                            }
-                        </span>
-                    </th>
+                    @if (showFields)
+                    {
+                        <th class="num" title="The number of bytes after the length byte, including the checksum">Length</th>
+                        <th class="num" title="255 addresses the device itself">Port</th>
+                        <th>Payload type</th>
+                        <th>Checksum</th>
+                    }
+                    else
+                    {
+                        <th class="hide-narrow">Bytes</th>
+                    }
                 </tr>
             </thead>
             <tbody>
                 @foreach (var entry in visible)
                 {
-                    var selected = entry.Id == inspected?.Id;
-                    <tr class="clickable @(entry.Error ? "row-error" : null) @(selected ? "selected" : null)"
-                        title="Show the frame" aria-selected="@(selected ? "true" : "false")"
-                        @onclick="() => inspected = entry">
+                    <tr class="@(entry.Error ? "row-error" : null) @(OnSelect.HasDelegate ? "clickable" : null)"
+                        title="@(OnSelect.HasDelegate ? "Open this register" : null)" @onclick="() => OnSelect.InvokeAsync(entry.Address)">
                         <td class="num">@entry.Time</td>
                         <td><span class="type type-@entry.Type.ToLowerInvariant()">@entry.Type</span></td>
                         <td title="Address @entry.Address">@entry.Register</td>
                         <td class="payload">@entry.Payload</td>
-                        <td class="frame-bytes-cell hide-narrow">
-                            @foreach (var segment in entry.Frame)
-                            {
-                                <span class="fb fb-@segment.Field.ToString().ToLowerInvariant() @(segment.IsProblem ? "problem" : null)"
-                                      title="@segment.Label: @segment.Value">@FrameHex(segment.Bytes)</span>
-                            }
-                        </td>
+                        @if (showFields)
+                        {
+                            <td class="num">@entry.Length</td>
+                            <td class="num">@entry.Port</td>
+                            <td>@entry.PayloadType</td>
+                            <td class="@(entry.ChecksumValid ? null : "invalid")">@entry.Checksum</td>
+                        }
+                        else
+                        {
+                            <td class="bytes hide-narrow">@entry.Hex</td>
+                        }
                     </tr>
                 }
             </tbody>
@@ -117,7 +109,7 @@
 
     bool onlySelected;
     long nextId;
-    LogEntry? inspected;
+    bool showFields;
 
     [Parameter] public EventCallback<int> OnSelect { get; set; }
 
@@ -131,15 +123,9 @@
 
     [Parameter] public EventCallback OnToggleCollapsed { get; set; }
 
-    record LogEntry(long Id, HarpMessage Message, string Time, string Type, int Address, string Register, string Payload, IReadOnlyList<FrameSegment> Frame, bool Error, bool IsEvent);
-
-    static readonly (string Field, string Label)[] Legend =
-    [
-        ("messagetype", "type"), ("length", "len"), ("address", "reg"), ("port", "port"),
-        ("payloadtype", "ptype"), ("timestamp", "time"), ("payload", "payload"), ("checksum", "sum")
-    ];
-
-    static string FrameHex(byte[] bytes) => string.Join(" ", bytes.Select(value => value.ToString("X2")));
+    record LogEntry(
+        long Id, string Time, string Type, int Address, string Register, string Payload, string Hex,
+        int Length, int Port, string PayloadType, string Checksum, bool ChecksumValid, bool Error, bool IsEvent);
 
     int? shownAddress;
 
@@ -201,13 +187,17 @@
 
         return new LogEntry(
             nextId++,
-            message,
             time,
             message.MessageType.ToString(),
             message.Address,
             register?.Name ?? message.Address.ToString(CultureInfo.InvariantCulture),
             payload,
-            HarpFrame.Describe(message, register),
+            string.Join(" ", message.MessageBytes.Select(value => value.ToString("X2"))),
+            message.MessageBytes[1],
+            message.Port,
+            message.IsTimestamped ? $"{message.PayloadType & ~PayloadType.Timestamp}, timestamped" : message.PayloadType.ToString(),
+            $"{message.Checksum:X2}{(message.IsValid ? "" : " (invalid)")}",
+            message.IsValid,
             message.Error,
             message.MessageType == MessageType.Event);
     }
