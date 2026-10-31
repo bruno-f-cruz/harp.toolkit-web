@@ -1,0 +1,103 @@
+name: Build and deploy
+
+# Builds and deploys the site on every push to main. Every hour it also refreshes the device
+# catalog (from the Harp whoami registry) and the metadata schemas, and redeploys only when
+# either changed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  WWWROOT: src/Harp.Toolkit.Web/wwwroot
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Refresh device catalog
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: dotnet run scripts/UpdateDevices.cs -- "$WWWROOT/devices.json"
+
+      - name: Refresh metadata schemas
+        run: |
+          for name in device registers ios; do
+            curl -sSf "https://harp-tech.org/draft-02/schema/$name.json" -o "$WWWROOT/schema/$name.json"
+          done
+
+      - name: Configure Pages
+        id: pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      # Scheduled runs only redeploy when the catalog or schemas differ from the live site.
+      - name: Compare with deployed site
+        id: changes
+        run: |
+          changed=true
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            changed=false
+            for file in devices.json schema/device.json schema/registers.json schema/ios.json; do
+              if ! curl -sSf "${{ steps.pages.outputs.base_url }}/$file" -o "$RUNNER_TEMP/deployed" ||
+                 ! cmp -s "$RUNNER_TEMP/deployed" "$WWWROOT/$file"; then
+                echo "$file changed"
+                changed=true
+              fi
+            done
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        if: steps.changes.outputs.changed == 'true'
+        run: dotnet test --configuration Release
+
+      - name: Publish
+        if: steps.changes.outputs.changed == 'true'
+        run: dotnet publish src/Harp.Toolkit.Web --configuration Release --output publish
+
+      # Pages may serve the site under a path (/<repository>/), and Jekyll would hide _framework.
+      - name: Prepare site for GitHub Pages
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          sed -i 's|<base href="/" />|<base href="${{ steps.pages.outputs.base_path }}/" />|' publish/wwwroot/index.html
+          touch publish/wwwroot/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.changes.outputs.changed == 'true' && github.event_name != 'pull_request'
+        with:
+          path: publish/wwwroot
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.changed == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

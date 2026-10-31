@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Harp.Toolkit.Web/Harp.Toolkit.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Harp.Toolkit.Web.Tests/Harp.Toolkit.Web.Tests.csproj" />
+  </Folder>
+</Solution>

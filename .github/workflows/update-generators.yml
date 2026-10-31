@@ -1,0 +1,112 @@
+name: Update Harp.Generators
+
+# Opens (or refreshes) a pull request whenever a newer Harp.Generators release is on NuGet,
+# with the test results against the new package in the description.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-generators
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  PROJECT: src/Harp.Toolkit.Web/Harp.Toolkit.Web.csproj
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find latest release
+        id: version
+        run: |
+          current=$(sed -n 's|.*<HarpGeneratorsVersion>\(.*\)</HarpGeneratorsVersion>.*|\1|p' "$PROJECT")
+          latest=$(curl -sSf https://api.nuget.org/v3-flatcontainer/harp.generators/index.json \
+            | jq -r '.versions[] | select(contains("-") | not)' | sort -V | tail -n 1)
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$latest" != "$current" ] && [ "$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n 1)" = "$latest" ]; then
+            echo "update=true" >> "$GITHUB_OUTPUT"
+            echo "Harp.Generators $current -> $latest"
+          else
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            echo "Harp.Generators $current is up to date"
+          fi
+
+      - name: Bump version
+        if: steps.version.outputs.update == 'true'
+        run: sed -i "s|<HarpGeneratorsVersion>.*</HarpGeneratorsVersion>|<HarpGeneratorsVersion>${{ steps.version.outputs.latest }}</HarpGeneratorsVersion>|" "$PROJECT"
+
+      - uses: actions/setup-dotnet@v4
+        if: steps.version.outputs.update == 'true'
+        with:
+          global-json-file: global.json
+
+      - name: Test against new release
+        id: test
+        if: steps.version.outputs.update == 'true'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          dotnet test --configuration Release --logger "console;verbosity=normal" 2>&1 | tee "$RUNNER_TEMP/test.log"
+
+      - name: Write pull request description
+        if: steps.version.outputs.update == 'true'
+        env:
+          CURRENT: ${{ steps.version.outputs.current }}
+          LATEST: ${{ steps.version.outputs.latest }}
+          OUTCOME: ${{ steps.test.outcome }}
+        run: |
+          {
+            echo "Updates [Harp.Generators](https://www.nuget.org/packages/Harp.Generators/$LATEST) from \`$CURRENT\` to \`$LATEST\`."
+            echo
+            echo "Release notes: https://github.com/harp-tech/generators/releases/tag/v$LATEST"
+            echo
+            if [ "$OUTCOME" = "success" ]; then
+              echo "### ✅ Tests passed"
+            else
+              echo "### ❌ Tests failed"
+              echo
+              echo "This pull request is a draft until the failures below are resolved."
+            fi
+            echo
+            echo "<details><summary>Test output</summary>"
+            echo
+            echo '```'
+            grep -E "^Test Run|^ *(Total tests|Passed|Failed|Skipped): " "$RUNNER_TEMP/test.log" || tail -n 20 "$RUNNER_TEMP/test.log"
+            echo
+            # Each failing test with its message, without stack traces or assertion boilerplate.
+            awk '/^ *Failed [A-Za-z_]+/ { p = 1; print; next } /^ *Stack Trace:/ { p = 0 } p && !/Error Message:/' "$RUNNER_TEMP/test.log" \
+              | sed -E -e 's/\("([^"]+)","[^"]*"\)/(\1)/' -e "s/^ *Assert\.[A-Za-z]+ failed\..*'\. /    /" \
+              | head -n 200
+            echo '```'
+            echo
+            echo "</details>"
+            echo
+            echo "_Opened by the [Update Harp.Generators](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) workflow._"
+          } > "$RUNNER_TEMP/body.md"
+
+      - name: Open pull request
+        if: steps.version.outputs.update == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          # Pull requests opened with the default token do not trigger other workflows. Add a
+          # PR_TOKEN secret (fine-grained PAT or app token) to also run the build workflow on them.
+          token: ${{ secrets.PR_TOKEN || github.token }}
+          branch: update/harp-generators
+          delete-branch: true
+          commit-message: Update Harp.Generators to ${{ steps.version.outputs.latest }}
+          title: Update Harp.Generators to ${{ steps.version.outputs.latest }}
+          body-path: ${{ runner.temp }}/body.md
+          draft: ${{ steps.test.outcome != 'success' }}
+          labels: dependencies
+          add-paths: ${{ env.PROJECT }}

@@ -1,0 +1,99 @@
+%YAML 1.1
+---
+# yaml-language-server: $schema=https://harp-tech.org/draft-02/schema/device.json
+device: Hobgoblin
+whoAmI: 123
+firmwareVersion: "0.1"
+hardwareTargets: "1.0"
+registers:
+  DigitalInputState:
+    address: 32
+    type: U8
+    access: Event
+    maskType: DigitalInputs
+    description: Reflects the state of the digital input lines.
+  DigitalOutputSet: &doutput
+    address: 33
+    type: U8
+    access: [Write, Event]
+    maskType: DigitalOutputs
+    description: Sets the specified digital output lines.
+  DigitalOutputClear:
+    <<: *doutput
+    address: 34
+    access: [Write, Event]
+    description: Clears the specified digital output lines.
+  DigitalOutputToggle:
+    <<: *doutput
+    address: 35
+    description: Toggles the specified digital output lines.
+  DigitalOutputState:
+    <<: *doutput
+    address: 36
+    description: Writes the state of all digital output lines.
+  StartPulseTrain:
+    address: 37
+    type: U32
+    length: 4
+    access: Write
+    description: Starts a pulse train driving the specified digital output lines.
+    payloadSpec:
+      DigitalOutput:
+        offset: 0
+        mask: 0xFF
+        maskType: DigitalOutputs
+        description: Specifies the digital output lines set by each pulse of the pulse train.
+      PulseWidth:
+        offset: 1
+        defaultValue: 500000
+        description: Specifies the duration in microseconds that each pulse is HIGH.
+      PulsePeriod:
+        offset: 2
+        defaultValue: 1000000
+        description: Specifies the interval in microseconds between each pulse in the pulse train.
+      PulseCount:
+        offset: 3
+        defaultValue: 1
+        description: Specifies the number of pulses in the PWM pulse train. A value of zero signifies an infinite pulse train.
+  StopPulseTrain:
+    address: 38
+    type: U8
+    access: [Write, Event]
+    maskType: DigitalOutputs
+    description: Stops the pulse train running on the specified digital output lines.
+  AnalogData:
+    address: 39
+    type: U16
+    length: 3
+    access: Event
+    description: Reports the sampled analog signal on each of the ADC input channels. The ADC is capped at 12 bits of resolution.
+    payloadSpec:
+      AnalogInput0:
+        offset: 0
+        description: The analog value sampled from ADC channel 0.
+      AnalogInput1:
+        offset: 1
+        description: The analog value sampled from ADC channel 1.
+      AnalogInput2:
+        offset: 2
+        description: The analog value sampled from ADC channel 2.
+bitMasks:
+  DigitalInputs:
+    description: Specifies the state of port digital input lines.
+    bits:
+      GP2: 0x1
+      GP3: 0x2
+      GP12: 0x4
+      GP13: 0x8
+      GP14: 0x10
+  DigitalOutputs:
+    description: Specifies the state of port digital output lines.
+    bits:
+      GP15: 0x1
+      GP16: 0x2
+      GP17: 0x4
+      GP18: 0x8
+      GP19: 0x10
+      GP20: 0x20
+      GP21: 0x40
+      GP22: 0x80

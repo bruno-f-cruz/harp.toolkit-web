@@ -1,0 +1,33 @@
+@inherits LayoutComponentBase
+@inject IJSRuntime JS
+
+<div class="shell">
+    <header class="navbar">
+        <a class="brand" href="https://harp-tech.org" title="Code generated with Harp.Generators @DeviceCodeGenerator.GeneratorsVersion">
+            <img src="img/logo.svg" alt="Harp" />
+            <span class="brand-divider" aria-hidden="true"></span>
+            <span>Harp.Toolkit</span>
+        </a>
+        <nav class="sections" aria-label="Tools">
+            <NavLink href="" Match="NavLinkMatch.All">@Icons.Code <span class="hide-narrow">Generate</span></NavLink>
+            <NavLink href="device">@Icons.Plug <span class="hide-narrow">Device</span></NavLink>
+            <NavLink href="firmware">@Icons.Chip <span class="hide-narrow">Firmware</span></NavLink>
+        </nav>
+        <nav class="nav-links">
+            <a href="https://harp-tech.org/toolkit/" class="hide-narrow" title="Harp.Toolkit documentation">Docs</a>
+            <a href="https://harp-tech.org/draft-02/schema/device.json" class="hide-narrow">Schema</a>
+            <a href="https://github.com/harp-tech/toolkit" title="Harp.Toolkit on GitHub" aria-label="Harp.Toolkit on GitHub">@Icons.GitHub</a>
+            <button class="btn btn-icon btn-ghost" title="Toggle theme" aria-label="Toggle theme" @onclick="ToggleTheme">@Icons.Theme</button>
+        </nav>
+    </header>
+
+    @Body
+</div>
+
+@code {
+    async Task ToggleTheme()
+    {
+        var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/app.js");
+        await module.InvokeVoidAsync("toggleTheme");
+    }
+}

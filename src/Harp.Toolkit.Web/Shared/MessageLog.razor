@@ -1,0 +1,161 @@
+@using System.Diagnostics
+@using System.Globalization
+@using System.Runtime.Versioning
+@using Bonsai.Harp
+@attribute [SupportedOSPlatform("browser")]
+@implements IDisposable
+@inject DeviceSession Session
+
+<div class="toolbar">
+    <div class="segmented" role="radiogroup" aria-label="Messages to show">
+        @foreach (var option in Filters)
+        {
+            <button role="radio" aria-checked="@(filter == option ? "true" : "false")" @onclick="() => SetFilter(option)">@option</button>
+        }
+    </div>
+    <span class="spacer"></span>
+    <span class="file-meta hide-narrow">@rate.ToString("0", CultureInfo.InvariantCulture) msg/s · @total total</span>
+    <button class="btn" @onclick="TogglePause">@(paused ? "Resume" : "Pause")</button>
+    <button class="btn" @onclick="Clear">Clear</button>
+</div>
+<div class="log" role="log" aria-live="off">
+    @if (visible.Count == 0)
+    {
+        <div class="empty">
+            <p>
+                @(Session.State == SessionState.Connected
+                    ? "Messages from the device appear here. Set the device to Active to stream events."
+                    : "Connect a device to see its messages.")
+            </p>
+        </div>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr><th>Time (s)</th><th>Type</th><th>Register</th><th>Payload</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in visible)
+                {
+                    <tr class="@(entry.Error ? "row-error" : null)">
+                        <td class="num">@entry.Time</td>
+                        <td>@entry.Type</td>
+                        <td title="Address @entry.Address">@entry.Register</td>
+                        <td class="payload">@entry.Payload</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    const int MaxEntries = 500;
+    const int RefreshMilliseconds = 200;
+    static readonly string[] Filters = ["All", "Events", "Replies"];
+
+    readonly LinkedList<LogEntry> entries = new();
+    readonly List<LogEntry> visible = [];
+    readonly Stopwatch rateClock = Stopwatch.StartNew();
+    Timer? refresh;
+    string filter = "All";
+    bool paused;
+    bool dirty;
+    long total;
+    long countSinceRate;
+    double rate;
+
+    record LogEntry(string Time, string Type, int Address, string Register, string Payload, bool Error, bool IsEvent);
+
+    protected override void OnInitialized()
+    {
+        Session.MessageReceived += OnMessage;
+        Session.Changed += OnChanged;
+        refresh = new Timer(_ => InvokeAsync(Refresh), null, RefreshMilliseconds, RefreshMilliseconds);
+    }
+
+    void OnMessage(HarpMessage message)
+    {
+        total++;
+        countSinceRate++;
+        if (paused)
+            return;
+
+        entries.AddFirst(ToEntry(message));
+        if (entries.Count > MaxEntries)
+            entries.RemoveLast();
+        dirty = true;
+    }
+
+    LogEntry ToEntry(HarpMessage message)
+    {
+        var time = message.TryGetTimestamp(out var timestamp) ? timestamp.ToString("0.000000", CultureInfo.InvariantCulture) : "";
+        var register = Session.Registers.TryGetValue(message.Address, out var descriptor) ? descriptor.Name : message.Address.ToString(CultureInfo.InvariantCulture);
+        string payload;
+        try
+        {
+            payload = PayloadFormat.FormatText(message) is { Length: > 1 } text && descriptor?.Length > 1
+                ? $"\"{text}\""
+                : PayloadFormat.Format(message);
+        }
+        catch (Exception)
+        {
+            payload = Convert.ToHexString(message.MessageBytes);
+        }
+
+        var type = message.MessageType.ToString() + (message.Error ? " error" : "");
+        return new LogEntry(time, type, message.Address, register, payload, message.Error, message.MessageType == MessageType.Event);
+    }
+
+    void Refresh()
+    {
+        var elapsed = rateClock.Elapsed.TotalSeconds;
+        if (elapsed >= 1)
+        {
+            rate = countSinceRate / elapsed;
+            countSinceRate = 0;
+            rateClock.Restart();
+            dirty = true;
+        }
+
+        if (!dirty)
+            return;
+
+        dirty = false;
+        visible.Clear();
+        visible.AddRange(entries.Where(entry => filter switch
+        {
+            "Events" => entry.IsEvent,
+            "Replies" => !entry.IsEvent,
+            _ => true
+        }));
+        StateHasChanged();
+    }
+
+    void SetFilter(string option)
+    {
+        filter = option;
+        dirty = true;
+        Refresh();
+    }
+
+    void TogglePause() => paused = !paused;
+
+    void Clear()
+    {
+        entries.Clear();
+        total = 0;
+        dirty = true;
+        Refresh();
+    }
+
+    void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Session.MessageReceived -= OnMessage;
+        Session.Changed -= OnChanged;
+        refresh?.Dispose();
+    }
+}

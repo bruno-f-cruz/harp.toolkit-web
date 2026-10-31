@@ -1,0 +1,134 @@
+@* Builds a README badge linking to this site with a device preloaded. *@
+
+<dialog class="dialog" @ref="dialog" aria-labelledby="badge-title" @onclose="() => open = false">
+    @if (open)
+    {
+        <form method="dialog" class="dialog-header">
+            <h2 id="badge-title">Add a badge to your README</h2>
+            <button class="btn btn-icon btn-ghost" aria-label="Close" title="Close">✕</button>
+        </form>
+        <p class="dialog-lead">Anyone clicking the badge lands here with the device loaded, ready to generate.</p>
+
+        <label class="dialog-field">
+            <span>Registered device name or link to a <code>device.yml</code></span>
+            <input type="text" spellcheck="false" list="badge-devices" placeholder="Behavior, or https://github.com/org/repo/blob/main/device.yml"
+                   value="@target" @oninput="e => target = e.Value as string ?? string.Empty" />
+            <datalist id="badge-devices">
+                @foreach (var device in Devices)
+                {
+                    <option value="@device.Name"></option>
+                }
+            </datalist>
+        </label>
+
+        <div class="dialog-field">
+            <span>Style</span>
+            <div class="segmented" role="radiogroup" aria-label="Badge style">
+                <button role="radio" aria-checked="@(large ? "false" : "true")" @onclick="() => large = false">Flat</button>
+                <button role="radio" aria-checked="@(large ? "true" : "false")" @onclick="() => large = true">Large</button>
+            </div>
+        </div>
+
+        <div class="badge-preview">
+            @if (Link is { } link)
+            {
+                <a href="@link" target="_blank" rel="noopener"><img src="@ImageUrl" alt="@AltText" /></a>
+            }
+            else
+            {
+                <img src="@ImageUrl" alt="@AltText" class="muted" />
+                <span class="file-meta">Enter a device to get a link.</span>
+            }
+        </div>
+
+        @foreach (var (format, snippet) in Snippets)
+        {
+            <div class="snippet">
+                <div class="snippet-header">
+                    <span>@format</span>
+                    <button class="btn" disabled="@(Link is null)" @onclick="() => CopyAsync(format, snippet)">@Icons.Copy Copy</button>
+                </div>
+                <pre><code>@snippet</code></pre>
+            </div>
+        }
+    }
+</dialog>
+
+@code {
+    const string AltText = "Open in Harp.Toolkit Code Generator";
+
+    ElementReference dialog;
+    bool open;
+    bool large;
+    string target = string.Empty;
+    string siteUrl = string.Empty;
+
+    [Parameter]
+    public IJSObjectReference? Module { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<DeviceEntry> Devices { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<string> OnCopied { get; set; }
+
+    string ImageUrl => $"{siteUrl}img/{(large ? "badge-large.svg" : "badge.svg")}";
+
+    /// <summary>
+    /// Gets the link the badge opens: registered devices by name, so the link survives
+    /// repository moves, and anything else by URL.
+    /// </summary>
+    string? Link
+    {
+        get
+        {
+            var value = target.Trim();
+            if (value.Length == 0)
+                return null;
+
+            var device = Devices.FirstOrDefault(device => string.Equals(device.Name, value, StringComparison.OrdinalIgnoreCase));
+            if (device is not null)
+                return $"{siteUrl}?device={device.Name}";
+
+            return Uri.TryCreate(value, UriKind.Absolute, out _) ? $"{siteUrl}?url={EscapeQueryValue(value)}" : null;
+        }
+    }
+
+    IEnumerable<(string Format, string Snippet)> Snippets
+    {
+        get
+        {
+            var link = Link ?? $"{siteUrl}?device=…";
+            yield return ("Markdown", $"[![{AltText}]({ImageUrl})]({link})");
+            yield return ("HTML", $"<a href=\"{link.Replace("&", "&amp;")}\"><img src=\"{ImageUrl}\" alt=\"{AltText}\"></a>");
+            yield return ("reStructuredText", $".. image:: {ImageUrl}\n   :target: {link}\n   :alt: {AltText}");
+        }
+    }
+
+    public async Task ShowAsync(string baseUri, string? initialTarget)
+    {
+        siteUrl = baseUri;
+        target = initialTarget ?? string.Empty;
+        open = true;
+        StateHasChanged();
+        if (Module is not null)
+            await Module.InvokeVoidAsync("showDialog", dialog);
+    }
+
+    async Task CopyAsync(string format, string snippet)
+    {
+        if (Module is null)
+            return;
+
+        var copied = await Module.InvokeAsync<bool>("copyText", snippet);
+        await OnCopied.InvokeAsync(copied ? $"Copied {format} badge" : "Could not access the clipboard");
+    }
+
+    // Keeps links readable: only characters that would break the query are escaped.
+    static string EscapeQueryValue(string value) => value
+        .Replace("%", "%25")
+        .Replace("&", "%26")
+        .Replace("#", "%23")
+        .Replace("+", "%2B")
+        .Replace(" ", "%20");
+}

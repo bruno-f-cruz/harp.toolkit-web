@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harp.Toolkit Code Generator</title>
+  <meta name="description" content="Generate C# and Python interfaces and firmware for Harp devices from a device.yml file, right in your browser." />
+  <base href="/" />
+  <link rel="icon" href="favicon.ico" />
+  <link rel="preload" id="webassembly" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    try {
+      const theme = localStorage.getItem("harp-generators:theme");
+      if (theme) document.documentElement.dataset.theme = theme;
+    } catch { }
+    // Embedded in a documentation page, which already shows the site header. When the page is on
+    // the same site, follow its light or dark theme as it changes.
+    if (window.self !== window.top) {
+      document.documentElement.classList.add("embedded");
+      try {
+        const host = window.parent.document.documentElement;
+        const follow = () => {
+          const theme = host.getAttribute("data-bs-theme");
+          if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+        };
+        follow();
+        new window.parent.MutationObserver(follow).observe(host, { attributes: true, attributeFilter: ["data-bs-theme"] });
+      } catch { }
+    }
+  </script>
+  <script type="importmap"></script>
+</head>
+
+<body>
+  <div id="app">
+    <div class="boot">
+      <img src="img/logo.svg" alt="" width="56" height="56" />
+      <div class="boot-title">Harp.Toolkit Code Generator</div>
+      <div class="boot-bar"><div></div></div>
+      <div class="boot-text">Loading generator…</div>
+    </div>
+  </div>
+
+  <div id="blazor-error-ui">
+    Something went wrong.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">✕</span>
+  </div>
+  <!-- The common bundle includes C#, Python and C. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+  <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+</body>
+
+</html>

@@ -1,0 +1,195 @@
+[
+  {
+    "name": "AnalogInput",
+    "whoAmI": 1236,
+    "repositoryUrl": "https://github.com/harp-tech/device.analoginput",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.analoginput/main/device.yml"
+  },
+  {
+    "name": "AudioSwitch",
+    "whoAmI": 1248,
+    "repositoryUrl": "https://github.com/harp-tech/device.audioswitch",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.audioswitch/main/device.yml"
+  },
+  {
+    "name": "Behavior",
+    "whoAmI": 1216,
+    "repositoryUrl": "https://github.com/harp-tech/device.behavior",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.behavior/main/device.yml",
+    "iosUrl": "https://raw.githubusercontent.com/harp-tech/device.behavior/main/firmware/Behavior/ios.yml"
+  },
+  {
+    "name": "CameraController",
+    "whoAmI": 1168,
+    "repositoryUrl": "https://github.com/harp-tech/device.cameracontroller",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.cameracontroller/main/device.yml"
+  },
+  {
+    "name": "CameraControllerGen2",
+    "whoAmI": 1170,
+    "repositoryUrl": "https://github.com/harp-tech/device.cameracontrollergen2",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.cameracontrollergen2/main/device.yml"
+  },
+  {
+    "name": "ClockSynchronizer",
+    "whoAmI": 1152,
+    "repositoryUrl": "https://github.com/harp-tech/device.clocksynchronizer",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.clocksynchronizer/main/device.yml"
+  },
+  {
+    "name": "CurrentDriver",
+    "whoAmI": 1282,
+    "repositoryUrl": "https://github.com/fchampalimaud/device.currentdriver",
+    "deviceUrl": "https://raw.githubusercontent.com/fchampalimaud/device.currentdriver/main/device.yml"
+  },
+  {
+    "name": "cuTTLefish",
+    "whoAmI": 1403,
+    "repositoryUrl": "https://github.com/AllenNeuralDynamics/harp.device.cuttlefish",
+    "deviceUrl": "https://raw.githubusercontent.com/AllenNeuralDynamics/harp.device.cuttlefish/main/device.yml"
+  },
+  {
+    "name": "cuTTLefishFip",
+    "whoAmI": 1407,
+    "repositoryUrl": "https://github.com/AllenNeuralDynamics/harp.device.cuttlefish-fip",
+    "deviceUrl": "https://raw.githubusercontent.com/AllenNeuralDynamics/harp.device.cuttlefish-fip/main/device.yml"
+  },
+  {
+    "name": "EnvironmentSensor",
+    "whoAmI": 1405,
+    "repositoryUrl": "https://github.com/AllenNeuralDynamics/harp.device.environment-sensor",
+    "deviceUrl": "https://raw.githubusercontent.com/AllenNeuralDynamics/harp.device.environment-sensor/main/device.yml"
+  },
+  {
+    "name": "Hobgoblin",
+    "whoAmI": 123,
+    "repositoryUrl": "https://github.com/harp-tech/device.hobgoblin",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.hobgoblin/main/device.yml"
+  },
+  {
+    "name": "InputExpander",
+    "whoAmI": 1106,
+    "repositoryUrl": "https://github.com/harp-tech/device.inputexpander",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.inputexpander/main/device.yml"
+  },
+  {
+    "name": "LaserDriverController",
+    "whoAmI": 1298,
+    "repositoryUrl": "https://github.com/fchampalimaud/device.laserdrivercontroller",
+    "deviceUrl": "https://raw.githubusercontent.com/fchampalimaud/device.laserdrivercontroller/main/device.yml"
+  },
+  {
+    "name": "LicketySplit",
+    "whoAmI": 1400,
+    "repositoryUrl": "https://github.com/AllenNeuralDynamics/harp.device.lickety-split",
+    "deviceUrl": "https://raw.githubusercontent.com/AllenNeuralDynamics/harp.device.lickety-split/main/device.yml"
+  },
+  {
+    "name": "LoadCells",
+    "whoAmI": 1232,
+    "repositoryUrl": "https://github.com/harp-tech/device.loadcells",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.loadcells/main/device.yml"
+  },
+  {
+    "name": "MultiPwmGenerator",
+    "whoAmI": 1040,
+    "repositoryUrl": "https://github.com/harp-tech/device.multipwm",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.multipwm/main/device.yml"
+  },
+  {
+    "name": "Olfactometer",
+    "whoAmI": 1140,
+    "repositoryUrl": "https://github.com/harp-tech/device.olfactometer",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.olfactometer/main/device.yml"
+  },
+  {
+    "name": "OutputExpander",
+    "whoAmI": 1108,
+    "repositoryUrl": "https://github.com/harp-tech/device.outputexpander",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.outputexpander/main/device.yml"
+  },
+  {
+    "name": "Pluma",
+    "whoAmI": 2110,
+    "repositoryUrl": "https://github.com/emotional-cities/pluma",
+    "deviceUrl": "https://raw.githubusercontent.com/emotional-cities/pluma/main/device.yml"
+  },
+  {
+    "name": "Quac",
+    "whoAmI": 1411,
+    "repositoryUrl": "https://github.com/AllenNeuralDynamics/harp.device.quac",
+    "deviceUrl": "https://raw.githubusercontent.com/AllenNeuralDynamics/harp.device.quac/main/device.yml"
+  },
+  {
+    "name": "RfidReader",
+    "whoAmI": 2094,
+    "repositoryUrl": "https://github.com/harp-tech/device.rfidreader",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.rfidreader/main/device.yml"
+  },
+  {
+    "name": "RgbArray",
+    "whoAmI": 1264,
+    "repositoryUrl": "https://github.com/harp-tech/device.rgbarray",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.rgbarray/main/device.yml"
+  },
+  {
+    "name": "SniffDetector",
+    "whoAmI": 1401,
+    "repositoryUrl": "https://github.com/AllenNeuralDynamics/harp.device.sniff-detector",
+    "deviceUrl": "https://raw.githubusercontent.com/AllenNeuralDynamics/harp.device.sniff-detector/main/device.yml"
+  },
+  {
+    "name": "SoundCard",
+    "whoAmI": 1280,
+    "repositoryUrl": "https://github.com/harp-tech/device.soundcard",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.soundcard/main/device.yml"
+  },
+  {
+    "name": "StepperDriver",
+    "whoAmI": 1130,
+    "repositoryUrl": "https://github.com/harp-tech/device.stepperdriver",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.stepperdriver/main/device.yml"
+  },
+  {
+    "name": "Synchronizer",
+    "whoAmI": 1104,
+    "repositoryUrl": "https://github.com/harp-tech/device.synchronizer",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.synchronizer/main/device.yml"
+  },
+  {
+    "name": "SyringePump",
+    "whoAmI": 1296,
+    "repositoryUrl": "https://github.com/harp-tech/device.syringepump",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.syringepump/main/device.yml"
+  },
+  {
+    "name": "TimestampGeneratorGen3",
+    "whoAmI": 1158,
+    "repositoryUrl": "https://github.com/harp-tech/device.timestampgeneratorgen3",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.timestampgeneratorgen3/main/device.yml"
+  },
+  {
+    "name": "Treadmill",
+    "whoAmI": 1402,
+    "repositoryUrl": "https://github.com/AllenNeuralDynamics/harp.device.treadmill-driver",
+    "deviceUrl": "https://raw.githubusercontent.com/AllenNeuralDynamics/harp.device.treadmill-driver/main/device.yml"
+  },
+  {
+    "name": "VestibularH1",
+    "whoAmI": 1224,
+    "repositoryUrl": "https://github.com/harp-tech/device.vestibularH1",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.vestibularH1/main/device.yml"
+  },
+  {
+    "name": "VestibularH2",
+    "whoAmI": 1225,
+    "repositoryUrl": "https://github.com/harp-tech/device.vestibularH2",
+    "deviceUrl": "https://raw.githubusercontent.com/harp-tech/device.vestibularH2/main/device.yml"
+  },
+  {
+    "name": "WhiteRabbit",
+    "whoAmI": 1404,
+    "repositoryUrl": "https://github.com/AllenNeuralDynamics/harp.device.white-rabbit",
+    "deviceUrl": "https://raw.githubusercontent.com/AllenNeuralDynamics/harp.device.white-rabbit/main/device.yml"
+  }
+]

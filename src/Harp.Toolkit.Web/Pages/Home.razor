@@ -1,0 +1,607 @@
+@page "/"
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<PageTitle>Generate · Harp.Toolkit</PageTitle>
+
+    <main class="workspace">
+        <section class="pane" aria-label="Metadata">
+            <div class="toolbar">
+                <div class="segmented" role="tablist" aria-label="Metadata file">
+                    <button role="tab" aria-selected="@Selected(activeDoc == DeviceDoc)" @onclick="() => ShowDocAsync(DeviceDoc)"
+                            title="@(deviceSource ?? "Device metadata")">device.yml</button>
+                    <button role="tab" aria-selected="@Selected(activeDoc == IosDoc)" @onclick="() => ShowDocAsync(IosDoc)"
+                            title="Optional IO pin configuration, used to generate firmware">
+                        ios.yml@(string.IsNullOrWhiteSpace(iosYaml) ? null : " ●")
+                    </button>
+                </div>
+                <span class="spacer"></span>
+                <button class="btn" title="Open a device.yml or ios.yml file (Ctrl+O)" @onclick="OpenFile">@Icons.Open Open</button>
+                <select class="btn device-select" aria-label="Load a registered device" value="@selectedDeviceName" @onchange="OnDeviceSelected" disabled="@(loading || devices.Count == 0)">
+                    <option value="">@(loading ? "Loading…" : devices.Count == 0 ? "No devices" : "Devices")</option>
+                    @foreach (var device in devices)
+                    {
+                        <option value="@device.Name">@device.Name (@device.WhoAmI)</option>
+                    }
+                </select>
+                <input type="file" accept=".yml,.yaml" hidden @ref="fileInput" @onchange="OnFileSelected" />
+            </div>
+            <div class="editor">
+                <div class="editor-host" @ref="editorHost"></div>
+                @if (activeDoc == DeviceDoc && string.IsNullOrWhiteSpace(deviceYaml) && !loading)
+                {
+                    <div class="empty">
+                        <img src="img/logo.svg" alt="" width="48" height="48" />
+                        <h2>Generate a Harp device interface</h2>
+                        <p>Drop a <code>device.yml</code> anywhere, open one, paste it here, or pick a registered device.</p>
+                        <div class="actions">
+                            <button class="btn btn-primary" @onclick="OpenFile">@Icons.Open Open device.yml</button>
+                        </div>
+                    </div>
+                }
+                else if (activeDoc == IosDoc && string.IsNullOrWhiteSpace(iosYaml))
+                {
+                    <div class="empty">
+                        <h2>IO pins (optional)</h2>
+                        <p>Paste or open an <code>ios.yml</code> describing the microcontroller pins to include them in the generated firmware.</p>
+                        <p>Press <span class="kbd">Ctrl</span> <span class="kbd">Space</span> for suggestions.</p>
+                    </div>
+                }
+            </div>
+            @if (loadError is not null)
+            {
+                <div class="status">
+                    <div class="status-line status-error" role="alert">@Icons.Error <span>@loadError</span></div>
+                </div>
+            }
+            else if (result.Diagnostics.Count > 0)
+            {
+                <div class="status" role="status">
+                    @foreach (var diagnostic in result.Diagnostics)
+                    {
+                        <button class="status-line @(diagnostic.IsWarning ? "status-warn" : "status-error")"
+                                disabled="@(diagnostic.Line is null && diagnostic.Source == MetadataSource.Device)" @onclick="() => GoToAsync(diagnostic)">
+                            @(diagnostic.IsWarning ? Icons.Warning : Icons.Error)
+                            <span>@diagnostic.Message</span>
+                            <span class="spacer"></span>
+                            <span class="loc">
+                                @(diagnostic.Source == MetadataSource.IO ? "ios.yml" : null)
+                                @(diagnostic.Line is null ? null : $"Ln {diagnostic.Line}")
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+            else if (result.Metadata is { } metadata)
+            {
+                <div class="status" role="status">
+                    <div class="status-line status-ok">
+                        @Icons.Check
+                        <span>
+                            <strong>@(metadata.IsApplicationDevice ? metadata.Device : "Core registers")</strong>
+                            <span class="detail">
+                                @if (metadata.IsApplicationDevice)
+                                {
+                                    <text> · WhoAmI @metadata.WhoAmI</text>
+                                }
+                                · @metadata.Registers.Count registers
+                                @if (metadata.FirmwareVersion is not null)
+                                {
+                                    <text> · firmware @metadata.FirmwareVersion</text>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(iosYaml))
+                                {
+                                    <text> · with IO pins</text>
+                                }
+                            </span>
+                        </span>
+                    </div>
+                </div>
+            }
+        </section>
+
+        <section class="pane" aria-label="Generated code">
+            <div class="toolbar">
+                <div class="segmented" role="tablist" aria-label="Output">
+                    @foreach (var language in Languages)
+                    {
+                        <button role="tab" aria-selected="@Selected(language == selectedLanguage)" @onclick="() => selectedLanguage = language"
+                                disabled="@(!output.Files.Any(file => file.Language == language))">
+                            @LanguageName(language)
+                        </button>
+                    }
+                </div>
+                @if (selectedLanguage == OutputLanguage.CSharp)
+                {
+                    <label class="field" title="Namespace of the generated C# interface">
+                        <span class="hide-narrow">Namespace</span>
+                        <input type="text" spellcheck="false" placeholder="@DefaultNamespace" value="@namespaceOverride" @oninput="OnNamespaceInput" aria-label="Namespace" />
+                    </label>
+                }
+                else if (selectedLanguage == OutputLanguage.Python)
+                {
+                    <label class="field" title="Generate the Python interface as a package (__init__.py and py.typed) instead of a device.py module">
+                        <input type="checkbox" checked="@pythonPackage" @onchange="OnPythonPackageChanged" />
+                        Package
+                    </label>
+                }
+                <span class="spacer"></span>
+                <button class="btn" title="Get a README badge that opens this device here" @onclick="OpenBadgeDialogAsync">@Icons.Badge <span class="hide-narrow">Badge</span></button>
+                <button class="btn btn-primary" disabled="@(output.Files.Count == 0)" title="Download all files as a .zip (Ctrl+S)" @onclick="DownloadAllAsync">
+                    @Icons.Download <span class="hide-narrow">Download all</span>
+                </button>
+            </div>
+            @if (VisibleFiles.Count > 0)
+            {
+                <div class="toolbar tab-bar">
+                    <div class="tabs" role="tablist">
+                        @foreach (var file in VisibleFiles)
+                        {
+                            <button class="tab" role="tab" aria-selected="@Selected(file == SelectedFile)" @onclick="() => selectedFiles[file.Language] = file.Name">
+                                @file.Name
+                            </button>
+                        }
+                    </div>
+                    @if (SelectedFile is { } selected)
+                    {
+                        <span class="file-meta hide-narrow">@LineCount(selected.Content) lines · @FormatSize(selected.Content.Length)</span>
+                        <button class="btn btn-icon" title="Copy to clipboard" aria-label="Copy to clipboard" @onclick="CopySelectedAsync">@Icons.Copy</button>
+                        <button class="btn btn-icon" title="Download this file" aria-label="Download this file" @onclick="DownloadSelectedAsync">@Icons.Download</button>
+                    }
+                </div>
+                <div class="output @(IsStale ? "stale" : null)" role="tabpanel">
+                    @if (IsStale)
+                    {
+                        <div class="stale-note">Showing the last valid output. Fix the errors to regenerate.</div>
+                    }
+                    @if (SelectedFile is { Content.Length: 0 })
+                    {
+                        <div class="code"><em>This file is intentionally empty: it marks the package as typed.</em></div>
+                    }
+                    <pre class="code"><code @ref="code"></code></pre>
+                </div>
+            }
+            else
+            {
+                <div class="output">
+                    <div class="empty">
+                        @if (output.Files.Count == 0 && result.HasErrors)
+                        {
+                            <p>Fix the errors on the left to generate code.</p>
+                        }
+                        else if (output.Files.Count == 0)
+                        {
+                            <p>The generated <strong>C#</strong>, <strong>Python</strong> and <strong>firmware</strong> code appears here as you type.</p>
+                            <p class="hide-narrow"><span class="kbd">Ctrl</span> <span class="kbd">O</span> open &nbsp;·&nbsp; <span class="kbd">Ctrl</span> <span class="kbd">S</span> download all &nbsp;·&nbsp; <span class="kbd">Ctrl</span> <span class="kbd">Space</span> suggestions</p>
+                        }
+                        else
+                        {
+                            <p>No @LanguageName(selectedLanguage) output. Check the errors on the left.</p>
+                        }
+                    </div>
+                </div>
+            }
+        </section>
+    </main>
+
+<div class="drop-overlay">Drop device.yml or ios.yml to load it</div>
+
+<BadgeDialog @ref="badgeDialog" Module="module" Devices="devices" OnCopied="ShowToastAsync" />
+
+@if (toast is not null)
+{
+    <div class="toast" role="status">@toast</div>
+}
+
+@code {
+    const string DeviceDoc = "device";
+    const string IosDoc = "ios";
+    const string YamlKey = "yaml";
+    const string IosKey = "ios";
+    const string SourceKey = "source";
+    const string NamespaceKey = "namespace";
+    const string PythonPackageKey = "pythonPackage";
+    static readonly OutputLanguage[] Languages = [OutputLanguage.CSharp, OutputLanguage.Python, OutputLanguage.Firmware];
+
+    IJSObjectReference? module;
+    IJSObjectReference? editor;
+    DotNetObjectReference<Home>? self;
+    ElementReference editorHost;
+    ElementReference code;
+    ElementReference fileInput;
+    BadgeDialog? badgeDialog;
+
+    IReadOnlyList<DeviceEntry> devices = [];
+    string deviceYaml = string.Empty;
+    string iosYaml = string.Empty;
+    string activeDoc = DeviceDoc;
+    string? deviceSource;
+    string? loadedUrl;
+    string selectedDeviceName = string.Empty;
+    string namespaceOverride = string.Empty;
+    bool pythonPackage;
+    bool loading;
+    string? loadError;
+    string? toast;
+
+    // The latest result, and the latest result that produced files. They differ while the
+    // metadata has errors, so the previous output stays visible for reference.
+    GenerationResult result = GenerationResult.Empty;
+    GenerationResult output = GenerationResult.Empty;
+    OutputLanguage selectedLanguage = OutputLanguage.CSharp;
+    readonly Dictionary<OutputLanguage, string> selectedFiles = [];
+    GeneratedFile? highlightedFile;
+    CancellationTokenSource? pendingToast;
+
+    string DefaultNamespace => (result.Metadata ?? output.Metadata) is { } metadata
+        ? DeviceCodeGenerator.GetDefaultNamespace(metadata)
+        : "Harp.Device";
+
+    bool IsStale => result.Files.Count == 0 && result.HasErrors && output.Files.Count > 0;
+
+    IReadOnlyList<GeneratedFile> VisibleFiles => output.Files.Where(file => file.Language == selectedLanguage).ToList();
+
+    GeneratedFile? SelectedFile
+    {
+        get
+        {
+            var files = VisibleFiles;
+            return files.FirstOrDefault(file => selectedFiles.GetValueOrDefault(selectedLanguage) == file.Name) ?? files.FirstOrDefault();
+        }
+    }
+
+    static string Selected(bool value) => value ? "true" : "false";
+
+    static string LanguageName(OutputLanguage language) => language switch
+    {
+        OutputLanguage.CSharp => "C#",
+        OutputLanguage.Python => "Python",
+        _ => "Firmware"
+    };
+
+    static string HighlightLanguage(OutputLanguage language) => language switch
+    {
+        OutputLanguage.CSharp => "csharp",
+        OutputLanguage.Python => "python",
+        _ => "c"
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeAsync();
+            return;
+        }
+
+        var selected = SelectedFile;
+        if (module is not null && selected is not null && !ReferenceEquals(selected, highlightedFile))
+        {
+            highlightedFile = selected;
+            await module.InvokeVoidAsync("highlight", code, selected.Content, HighlightLanguage(selected.Language));
+        }
+    }
+
+    async Task InitializeAsync()
+    {
+        module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/app.js");
+        self = DotNetObjectReference.Create(this);
+        editor = await module.InvokeAsync<IJSObjectReference>("createEditor", editorHost, self);
+        await module.InvokeVoidAsync("initDropTarget", self);
+        await module.InvokeVoidAsync("initShortcuts", self);
+
+        namespaceOverride = await module.InvokeAsync<string?>("loadSetting", NamespaceKey) ?? string.Empty;
+        pythonPackage = await module.InvokeAsync<string?>("loadSetting", PythonPackageKey) == "true";
+
+        try
+        {
+            devices = await Http.GetFromJsonAsync<List<DeviceEntry>>("devices.json") ?? [];
+        }
+        catch (Exception)
+        {
+            // The device list is a convenience; files can still be opened or pasted.
+        }
+
+        // Links take precedence over the last session, so they can be shared.
+        var deviceName = await module.InvokeAsync<string?>("getQueryParameter", "device");
+        var url = await module.InvokeAsync<string?>("getQueryParameter", "url");
+        var ios = await module.InvokeAsync<string?>("getQueryParameter", "ios");
+        if (!string.IsNullOrWhiteSpace(deviceName) &&
+            devices.FirstOrDefault(device => string.Equals(device.Name, deviceName, StringComparison.OrdinalIgnoreCase)) is { } named)
+        {
+            await LoadDeviceAsync(named);
+        }
+        else if (!string.IsNullOrWhiteSpace(url))
+        {
+            await LoadUrlAsync(url, ios);
+        }
+        else
+        {
+            var saved = await module.InvokeAsync<string?>("loadSetting", YamlKey);
+            var savedIos = await module.InvokeAsync<string?>("loadSetting", IosKey);
+            if (!string.IsNullOrEmpty(saved) || !string.IsNullOrEmpty(savedIos))
+            {
+                deviceSource = await module.InvokeAsync<string?>("loadSetting", SourceKey);
+                selectedDeviceName = devices.Any(device => device.Name == deviceSource) ? deviceSource! : string.Empty;
+                await SetDocumentsAsync(saved ?? string.Empty, savedIos ?? string.Empty);
+            }
+        }
+        StateHasChanged();
+    }
+
+    async Task GenerateAsync()
+    {
+        result = DeviceCodeGenerator.Generate(deviceYaml, iosYaml, new GenerationOptions(namespaceOverride, pythonPackage));
+        if (result.Files.Count > 0 || string.IsNullOrWhiteSpace(deviceYaml))
+            output = result;
+
+        if (editor is not null)
+        {
+            await editor.InvokeVoidAsync("setDiagnostics", DeviceDoc, MarkersFor(MetadataSource.Device));
+            await editor.InvokeVoidAsync("setDiagnostics", IosDoc, MarkersFor(MetadataSource.IO));
+        }
+    }
+
+    object[] MarkersFor(MetadataSource source) => result.Diagnostics
+        .Where(diagnostic => diagnostic.Source == source && diagnostic.Line is not null)
+        .Select(diagnostic => new { line = diagnostic.Line, message = diagnostic.Message })
+        .ToArray<object>();
+
+    async Task SetDocumentsAsync(string device, string ios)
+    {
+        deviceYaml = device;
+        iosYaml = ios;
+        loadError = null;
+        if (editor is not null)
+        {
+            await editor.InvokeVoidAsync("setText", DeviceDoc, deviceYaml);
+            await editor.InvokeVoidAsync("setText", IosDoc, iosYaml);
+        }
+        await ShowDocAsync(DeviceDoc);
+        await GenerateAsync();
+        await SaveSettingAsync(YamlKey, deviceYaml);
+        await SaveSettingAsync(IosKey, iosYaml);
+        await SaveSettingAsync(SourceKey, deviceSource);
+    }
+
+    [JSInvokable]
+    public async Task OnEditorChanged(string doc, string text)
+    {
+        if (doc == IosDoc)
+            iosYaml = text;
+        else
+            deviceYaml = text;
+
+        await GenerateAsync();
+        StateHasChanged();
+        await SaveSettingAsync(doc == IosDoc ? IosKey : YamlKey, text);
+    }
+
+    async Task ShowDocAsync(string doc)
+    {
+        activeDoc = doc;
+        if (editor is not null)
+            await editor.InvokeVoidAsync("show", doc);
+    }
+
+    async Task OnNamespaceInput(ChangeEventArgs e)
+    {
+        namespaceOverride = e.Value as string ?? string.Empty;
+        await SaveSettingAsync(NamespaceKey, string.IsNullOrWhiteSpace(namespaceOverride) ? null : namespaceOverride);
+        await GenerateAsync();
+    }
+
+    async Task OnPythonPackageChanged(ChangeEventArgs e)
+    {
+        pythonPackage = e.Value is true;
+        await SaveSettingAsync(PythonPackageKey, pythonPackage ? "true" : null);
+        await GenerateAsync();
+    }
+
+    async Task OpenFile()
+    {
+        if (module is not null)
+            await module.InvokeVoidAsync("openFilePicker", fileInput);
+    }
+
+    async Task OnFileSelected()
+    {
+        if (module is null)
+            return;
+
+        var file = await module.InvokeAsync<LoadedFile?>("readFileInput", fileInput);
+        if (file is not null)
+            await LoadText(file.Name, file.Text);
+    }
+
+    /// <summary>
+    /// Loads a dropped or opened file, routing IO pin files to the ios.yml tab.
+    /// </summary>
+    [JSInvokable]
+    public async Task LoadText(string name, string text)
+    {
+        await SetQueryAsync(null, null, null);
+        if (name.Contains("ios", StringComparison.OrdinalIgnoreCase))
+        {
+            iosYaml = text;
+            if (editor is not null)
+                await editor.InvokeVoidAsync("setText", IosDoc, text);
+            await ShowDocAsync(IosDoc);
+            await GenerateAsync();
+            await SaveSettingAsync(IosKey, text);
+        }
+        else
+        {
+            deviceSource = name;
+            loadedUrl = null;
+            selectedDeviceName = string.Empty;
+            await SetDocumentsAsync(text, string.Empty);
+        }
+        StateHasChanged();
+    }
+
+    async Task OnDeviceSelected(ChangeEventArgs e)
+    {
+        if (devices.FirstOrDefault(device => device.Name == e.Value as string) is { } device)
+            await LoadDeviceAsync(device);
+    }
+
+    async Task LoadDeviceAsync(DeviceEntry device)
+    {
+        await LoadAsync(device.DeviceUrl, device.IosUrl, device);
+        if (loadError is null)
+            await SetQueryAsync(device.Name, null, null);
+    }
+
+    async Task LoadUrlAsync(string url, string? iosUrl)
+    {
+        url = MetadataLinks.ToRawUrl(url);
+        iosUrl = string.IsNullOrWhiteSpace(iosUrl) ? null : MetadataLinks.ToRawUrl(iosUrl);
+
+        // Registered devices bring their IO pin metadata along.
+        var device = devices.FirstOrDefault(device => device.DeviceUrl == url);
+        await LoadAsync(url, iosUrl ?? device?.IosUrl, device);
+        if (loadError is null)
+            await SetQueryAsync(null, url, iosUrl);
+    }
+
+    async Task LoadAsync(string url, string? iosUrl, DeviceEntry? device)
+    {
+        loading = true;
+        loadError = null;
+        StateHasChanged();
+        try
+        {
+            var deviceTask = Http.GetStringAsync(url);
+            var iosTask = iosUrl is null ? Task.FromResult(string.Empty) : Http.GetStringAsync(iosUrl);
+            var text = await deviceTask;
+            var ios = await iosTask;
+            deviceSource = device?.Name ?? MetadataLinks.GetDisplayName(url, devices);
+            loadedUrl = url;
+            selectedDeviceName = device?.Name ?? string.Empty;
+            await SetDocumentsAsync(text, ios);
+        }
+        catch (Exception ex)
+        {
+            loadError = $"Could not load {url}: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task GoToAsync(Diagnostic diagnostic)
+    {
+        if (editor is null)
+            return;
+
+        activeDoc = diagnostic.Source == MetadataSource.IO ? IosDoc : DeviceDoc;
+        if (diagnostic.Line is long line)
+            await editor.InvokeVoidAsync("goTo", activeDoc, line, diagnostic.Column ?? 1);
+        else
+            await ShowDocAsync(activeDoc);
+    }
+
+    [JSInvokable]
+    public async Task OnShortcut(string key)
+    {
+        if (key == "o")
+            await OpenFile();
+        else if (key == "s" && output.Files.Count > 0)
+            await DownloadAllAsync();
+    }
+
+    async Task CopySelectedAsync()
+    {
+        if (module is null || SelectedFile is not { } file)
+            return;
+
+        var copied = await module.InvokeAsync<bool>("copyText", file.Content);
+        await ShowToastAsync(copied ? $"Copied {file.Name}" : "Could not access the clipboard");
+    }
+
+    async Task DownloadSelectedAsync()
+    {
+        if (module is not null && SelectedFile is { } file)
+            await module.InvokeVoidAsync("downloadText", file.Name, file.Content);
+    }
+
+    async Task DownloadAllAsync()
+    {
+        if (module is null || output.Files.Count == 0)
+            return;
+
+        using var stream = new MemoryStream(OutputArchive.Create(output.Files));
+        using var streamReference = new DotNetStreamReference(stream);
+        await module.InvokeVoidAsync("downloadBytes", OutputArchive.GetFileName(output.Metadata), streamReference);
+    }
+
+    async Task OpenBadgeDialogAsync()
+    {
+        if (badgeDialog is null)
+            return;
+
+        var device = devices.FirstOrDefault(device => device.Name == selectedDeviceName);
+        var target = device?.Name ?? (loadedUrl is null ? null : MetadataLinks.ToPageUrl(loadedUrl));
+        await badgeDialog.ShowAsync(Navigation.BaseUri, target);
+    }
+
+    async Task ShowToastAsync(string message)
+    {
+        pendingToast?.Cancel();
+        var cancellation = pendingToast = new CancellationTokenSource();
+        toast = message;
+        StateHasChanged();
+        try
+        {
+            await Task.Delay(1800, cancellation.Token);
+            toast = null;
+            StateHasChanged();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    async Task SaveSettingAsync(string key, string? value)
+    {
+        if (module is not null)
+            await module.InvokeVoidAsync("saveSetting", key, value);
+    }
+
+    async Task SetQueryAsync(string? device, string? url, string? ios)
+    {
+        if (module is null)
+            return;
+
+        await module.InvokeVoidAsync("setQueryParameter", "device", device);
+        await module.InvokeVoidAsync("setQueryParameter", "url", url is null ? null : MetadataLinks.ToPageUrl(url));
+        await module.InvokeVoidAsync("setQueryParameter", "ios", ios is null ? null : MetadataLinks.ToPageUrl(ios));
+    }
+
+    static int LineCount(string text) => text.Length == 0 ? 0 : text.Count(c => c == '\n') + 1;
+
+    static string FormatSize(int length) => length < 1024 ? $"{length} B" : $"{length / 1024.0:0.#} KB";
+
+    sealed record LoadedFile(string Name, string Text);
+
+    public async ValueTask DisposeAsync()
+    {
+        pendingToast?.Cancel();
+        self?.Dispose();
+        try
+        {
+            if (editor is not null)
+                await editor.DisposeAsync();
+            if (module is not null)
+                await module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

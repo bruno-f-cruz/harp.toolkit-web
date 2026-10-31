@@ -1,0 +1,224 @@
+@page "/device"
+@using System.Globalization
+@using System.Runtime.Versioning
+@using Bonsai.Harp
+@attribute [SupportedOSPlatform("browser")]
+@implements IDisposable
+@inject DeviceSession Session
+
+<PageTitle>Device · Harp.Toolkit</PageTitle>
+
+<main class="workspace">
+    @if (!Session.IsSupported)
+    {
+        <UnsupportedBrowser />
+    }
+    else
+    {
+        <section class="pane" aria-label="Device">
+            <DeviceToolbar />
+            <div class="panel-body">
+                @if (Session.Identity is { } identity && Session.State == SessionState.Connected)
+                {
+                    <section class="card">
+                        <h2>Identity</h2>
+                        <dl class="kv">
+                            <dt>Device</dt>
+                            <dd>
+                                @identity.DisplayName
+                                @if (Session.CatalogEntry is { } entry)
+                                {
+                                    <a class="detail" href="@entry.RepositoryUrl" target="_blank" rel="noopener">repository</a>
+                                }
+                            </dd>
+                            <dt>WhoAmI</dt><dd>@identity.WhoAmI</dd>
+                            <dt>Serial number</dt><dd>@(identity.SerialNumber is { } serial ? $"0x{serial:x4}" : "not reported")</dd>
+                            <dt>Hardware</dt><dd>@identity.HardwareVersion (assembly @identity.AssemblyVersion)</dd>
+                            <dt>Firmware</dt><dd>@identity.FirmwareVersion</dd>
+                            <dt>Harp core</dt><dd>@identity.CoreVersion</dd>
+                            <dt>Registers</dt><dd>@(Session.CatalogEntry is null ? "core registers only (device not in the registry)" : $"{Session.Registers.Count} from device.yml")</dd>
+                        </dl>
+                    </section>
+
+                    <section class="card">
+                        <h2>Operation mode</h2>
+                        <div class="row">
+                            <div class="segmented" role="radiogroup" aria-label="Operation mode">
+                                <button role="radio" aria-checked="@Checked(operationMode == OperationMode.Standby)" disabled="@busy" @onclick="() => SetModeAsync(OperationMode.Standby)">Standby</button>
+                                <button role="radio" aria-checked="@Checked(operationMode == OperationMode.Active)" disabled="@busy" @onclick="() => SetModeAsync(OperationMode.Active)">Active</button>
+                            </div>
+                            <button class="btn" disabled="@busy" title="Ask the device to send the value of every register" @onclick="DumpRegistersAsync">Dump registers</button>
+                        </div>
+                        <p class="hint">Active devices stream events, shown in the message log.</p>
+                    </section>
+
+                    <section class="card">
+                        <h2>Register</h2>
+                        <div class="row">
+                            <label class="field">
+                                <span>Register</span>
+                                <select class="btn" value="@address" @onchange="OnRegisterSelected" aria-label="Register">
+                                    @foreach (var register in Session.Registers.Values.OrderBy(register => register.Address))
+                                    {
+                                        <option value="@register.Address">@register.Address · @register.Name</option>
+                                    }
+                                </select>
+                            </label>
+                            <label class="field">
+                                <span>Type</span>
+                                <select class="btn" value="@payloadType" @onchange="OnTypeSelected" aria-label="Payload type">
+                                    @foreach (var type in PayloadFormat.RegisterTypes)
+                                    {
+                                        <option value="@type">@type</option>
+                                    }
+                                </select>
+                            </label>
+                            <button class="btn" disabled="@busy" @onclick="ReadRegisterAsync">Read</button>
+                        </div>
+                        @if (Session.Registers.TryGetValue(address, out var selected) && !string.IsNullOrWhiteSpace(selected.Description))
+                        {
+                            <p class="hint">@selected.Description</p>
+                        }
+                        <div class="row">
+                            <label class="field grow">
+                                <span>Value</span>
+                                <input type="text" spellcheck="false" placeholder="e.g. 1, 2, 0x0F" @bind="writeText" @bind:event="oninput" aria-label="Value to write" />
+                            </label>
+                            <button class="btn" disabled="@(busy || string.IsNullOrWhiteSpace(writeText))" @onclick="WriteRegisterAsync">Write</button>
+                        </div>
+                        @if (registerResult is not null)
+                        {
+                            <div class="status-line @(registerError ? "status-error" : "status-ok")" role="status">
+                                @(registerError ? Icons.Error : Icons.Check) <span>@registerResult</span>
+                            </div>
+                        }
+                    </section>
+                }
+                else
+                {
+                    <div class="empty">
+                        <img src="img/logo.svg" alt="" width="48" height="48" />
+                        <h2>Connect a Harp device</h2>
+                        <p>Select the serial port of a device connected to this computer. The browser asks which port to share with this page.</p>
+                        <div class="actions">
+                            <button class="btn btn-primary" disabled="@(Session.State is SessionState.Connecting or SessionState.Busy)" @onclick="Session.SelectPortAsync">@Icons.Plug Select port</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="pane" aria-label="Messages">
+            <MessageLog />
+        </section>
+    }
+</main>
+
+@code {
+    int address;
+    PayloadType payloadType = PayloadType.U16;
+    string? writeText;
+    string? registerResult;
+    bool registerError;
+    bool busy;
+    OperationMode? operationMode;
+
+    static string Checked(bool value) => value ? "true" : "false";
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnChanged;
+        SelectRegister(0);
+    }
+
+    void OnChanged() => InvokeAsync(StateHasChanged);
+
+    void OnRegisterSelected(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+            SelectRegister(value);
+    }
+
+    void SelectRegister(int value)
+    {
+        address = value;
+        registerResult = null;
+        if (Session.Registers.TryGetValue(value, out var register))
+            payloadType = PayloadFormat.GetBaseType(register.Type);
+    }
+
+    void OnTypeSelected(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<PayloadType>(e.Value?.ToString(), out var type))
+            payloadType = type;
+    }
+
+    async Task ReadRegisterAsync()
+    {
+        await RunAsync(async connection =>
+        {
+            var reply = await connection.CommandAsync(HarpCommand.Read(address, payloadType));
+            var text = PayloadFormat.FormatText(reply);
+            registerResult = text is { Length: > 1 } ? $"\"{text}\" ({PayloadFormat.Format(reply)})" : PayloadFormat.Format(reply);
+        });
+    }
+
+    async Task WriteRegisterAsync()
+    {
+        await RunAsync(async connection =>
+        {
+            var command = PayloadFormat.CreateWrite(address, payloadType, writeText ?? "");
+            await connection.CommandAsync(command);
+            registerResult = $"Wrote {PayloadFormat.Format(command)}";
+        });
+    }
+
+    async Task SetModeAsync(OperationMode mode)
+    {
+        await RunAsync(async connection =>
+        {
+            var current = OperationControl.GetPayload(await connection.CommandAsync(HarpCommand.ReadByte(OperationControl.Address)));
+            await connection.CommandAsync(OperationControl.FromPayload(MessageType.Write, new OperationControlPayload(
+                mode, dumpRegisters: false, current.MuteReplies, current.VisualIndicators, current.OperationLed, current.Heartbeat)));
+            operationMode = mode;
+            registerResult = null;
+        });
+    }
+
+    async Task DumpRegistersAsync()
+    {
+        await RunAsync(async connection =>
+        {
+            var current = OperationControl.GetPayload(await connection.CommandAsync(HarpCommand.ReadByte(OperationControl.Address)));
+            await connection.CommandAsync(OperationControl.FromPayload(MessageType.Write, new OperationControlPayload(
+                current.OperationMode, dumpRegisters: true, current.MuteReplies, current.VisualIndicators, current.OperationLed, current.Heartbeat)));
+            operationMode = current.OperationMode;
+            registerResult = "The device sent its registers to the message log.";
+            registerError = false;
+        });
+    }
+
+    async Task RunAsync(Func<HarpConnection, Task> action)
+    {
+        if (Session.Connection is not { } connection)
+            return;
+
+        busy = true;
+        registerError = false;
+        try
+        {
+            await action(connection);
+        }
+        catch (Exception ex) when (ex is HarpException or TimeoutException or FormatException or IOException)
+        {
+            registerError = true;
+            registerResult = ex is HarpException ? "The device rejected the command. Check the register address and type." : ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    public void Dispose() => Session.Changed -= OnChanged;
+}
