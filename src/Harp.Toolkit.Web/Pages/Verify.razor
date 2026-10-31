@@ -1,0 +1,389 @@
+@page "/verify"
+@using System.Globalization
+@using System.Runtime.Versioning
+@using Harp.Toolkit.Verify
+@attribute [SupportedOSPlatform("browser")]
+@implements IDisposable
+@inject DeviceSession Session
+@inject IJSRuntime JS
+
+<PageTitle>Verify · Harp.Toolkit</PageTitle>
+
+<main class="workflow-page">
+    @if (!Session.IsSupported)
+    {
+        <div class="workspace"><UnsupportedBrowser /></div>
+    }
+    else
+    {
+        <div class="workflow verify">
+            <header class="workflow-header">
+                <h1>Verify a device</h1>
+                <p>
+                    Checks a device against the Harp specification: the core registers and their access rules, the
+                    reply behavior of the protocol, and optionally the synchronization clock and the device's own device.yml.
+                    The checks are the ones <a href="https://harp-tech.org/toolkit/articles/verify.html" target="_blank" rel="noopener">harp.toolkit verify</a> runs.
+                </p>
+            </header>
+
+            @if (report is null && !running)
+            {
+                <div class="status-line status-warn callout">
+                    @Icons.Warning
+                    <span>
+                        Verification writes to device registers, and leaves the clock and operation mode changed. It assumes a freshly
+                        powered device. Do not verify a device that is part of a running experiment.
+                    </span>
+                </div>
+
+                <section class="panel">
+                    <h2>Device</h2>
+                    @if (Session.IsConnected && Session.Identity is { } identity)
+                    {
+                        <p class="step-summary">
+                            <strong>@identity.DisplayName</strong> · WhoAmI @identity.WhoAmI · firmware @identity.FirmwareVersion · hardware @identity.HardwareVersion
+                            <button class="link-button" @onclick="Session.SelectPortAsync">Change</button>
+                        </p>
+                    }
+                    else
+                    {
+                        <div class="row">
+                            <button class="btn btn-primary" disabled="@(Session.State is SessionState.Connecting or SessionState.Busy)" @onclick="Session.SelectPortAsync">
+                                @Icons.Plug @(Session.Port is null ? "Select port" : "Select another port")
+                            </button>
+                            @if (Session.Port is not null)
+                            {
+                                <button class="btn" disabled="@(Session.State != SessionState.Disconnected)" @onclick="Session.ConnectAsync">
+                                    @(Session.State == SessionState.Connecting ? "Connecting…" : $"Connect to {Session.PortLabel}")
+                                </button>
+                            }
+                        </div>
+                        @if (Session.Error is { } error)
+                        {
+                            <div class="status-line status-error" role="alert">@Icons.Error <span>@error</span></div>
+                        }
+                    }
+                </section>
+
+                <section class="panel">
+                    <h2>Checks</h2>
+                    <div class="options">
+                        <div class="option">
+                            <span class="option-text">
+                                <strong>Specification</strong>
+                                <small>Core registers, access rules and protocol replies. Always included.</small>
+                            </span>
+                            <span class="pill passed">Included</span>
+                        </div>
+
+                        <label class="option">
+                            <span class="option-text">
+                                <strong>Device registers</strong>
+                                @if (HasDeviceSchema)
+                                {
+                                    <small>Reads every register declared in the device.yml of @Session.Schema.DeviceName (@Session.Schema.Source) and checks its replies against it.</small>
+                                }
+                                else
+                                {
+                                    <small>No device.yml is loaded. Connect a device that is in the Harp registry, or load its device.yml on the Device page.</small>
+                                }
+                            </span>
+                            <input type="checkbox" class="toggle" @bind="checkInterface" disabled="@(!HasDeviceSchema)" />
+                        </label>
+
+                        <label class="option">
+                            <span class="option-text">
+                                <strong>Prerelease checks</strong>
+                                <small>Also checks against protocol v@(ProtocolReference.PrereleaseMajorVersion), which is not yet ratified. Failures here show what that version would require, not defects against the device's own version.</small>
+                            </span>
+                            <input type="checkbox" class="toggle" @bind="includePrerelease" />
+                        </label>
+
+                        <div class="option column">
+                            <label class="option-row">
+                                <span class="option-text">
+                                    <strong>Clock alignment</strong>
+                                    <small>Compares timestamps with a reference clock device on the same synchronization bus.</small>
+                                </span>
+                                <input type="checkbox" class="toggle" @bind="checkClock" />
+                            </label>
+                            @if (checkClock)
+                            {
+                                <div class="clock-options">
+                                    <div class="row">
+                                        <button class="btn" @onclick="SelectClockPortAsync">@Icons.Plug @(clockPort is null ? "Select reference clock port" : "Change reference clock port")</button>
+                                        @if (clockPort is not null)
+                                        {
+                                            <span class="detail">@clockPortLabel</span>
+                                        }
+                                    </div>
+                                    <div class="row">
+                                        <label class="field">
+                                            <span>Pulse event register (optional)</span>
+                                            <input type="text" inputmode="numeric" placeholder="e.g. 32" @bind="ppsEventText" />
+                                        </label>
+                                        <label class="field">
+                                            <span>Pulse samples</span>
+                                            <input type="text" inputmode="numeric" @bind="clockSamplesText" />
+                                        </label>
+                                    </div>
+                                    <p class="hint">The pulse check needs the address of the register on the tested device that reports the reference clock's pulse.</p>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </section>
+
+                @if (setupError is not null)
+                {
+                    <div class="status-line status-error" role="alert">@Icons.Error <span>@setupError</span></div>
+                }
+                <div class="row">
+                    <button class="btn btn-primary btn-large" disabled="@(!Session.IsConnected)" @onclick="RunAsync">
+                        @Icons.ShieldCheck Run verification
+                    </button>
+                    <span class="hint">About @PlannedChecks checks.</span>
+                </div>
+            }
+            else
+            {
+                <section class="panel run-header">
+                    <div class="run-title">
+                        <div>
+                            <h2>@(report?.DeviceName ?? Session.Identity?.DisplayName ?? "Device")</h2>
+                            <p class="detail">
+                                @if (running)
+                                {
+                                    <text>Checking @(progress.Suite) · @(progress.Test)</text>
+                                }
+                                else if (report is not null)
+                                {
+                                    <text>Checked against @report.CheckedProtocolVersion · @report.RunDate.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</text>
+                                }
+                            </p>
+                        </div>
+                        <span class="spacer"></span>
+                        @if (running)
+                        {
+                            <button class="btn" disabled="@stopping" @onclick="Stop">@(stopping ? "Stopping…" : "Stop")</button>
+                        }
+                        else
+                        {
+                            <button class="btn" @onclick="Reset">Run again</button>
+                            <button class="btn btn-primary" @onclick="DownloadReportAsync">@Icons.Download Download report</button>
+                        }
+                    </div>
+                    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@Percent">
+                        <div class="@(Counts(Status.Failed) + Counts(Status.Error) > 0 ? "has-failures" : null)" style="width: @Percent%"></div>
+                    </div>
+                    <div class="status-filters" role="radiogroup" aria-label="Show results">
+                        <button role="radio" aria-checked="@Checked(filter is null)" @onclick="() => filter = null">All <span>@results.Count</span></button>
+                        @foreach (var status in new[] { Status.Passed, Status.Failed, Status.Error, Status.Skipped })
+                        {
+                            <button role="radio" aria-checked="@Checked(filter == status)" class="@ReportHtml.StatusClass(status)"
+                                    @onclick="() => filter = status">@status <span>@Counts(status)</span></button>
+                        }
+                    </div>
+                    @if (report?.AbortReason is { Length: > 0 } abort)
+                    {
+                        <div class="status-line status-error" role="alert">@Icons.Error <span>@abort</span></div>
+                    }
+                    @if (report?.ProtocolNotice is { Length: > 0 } notice)
+                    {
+                        <p class="hint">@notice</p>
+                    }
+                </section>
+
+                <div class="results">
+                    @foreach (var suite in suites)
+                    {
+                        var shown = suite.Results.Where(result => filter is null || result.Result.Status == filter).ToList();
+                        if (shown.Count == 0)
+                            continue;
+                        <section class="suite">
+                            <header>
+                                <h3>@suite.Name</h3>
+                                <p>@suite.Description</p>
+                            </header>
+                            @foreach (var result in shown)
+                            {
+                                <div class="check">
+                                    <span class="pill @ReportHtml.StatusClass(result.Result.Status)">@result.Result.Status</span>
+                                    <div class="check-text">
+                                        <strong>@result.Name</strong>
+                                        @if (!string.IsNullOrWhiteSpace(result.Description))
+                                        {
+                                            <small>@result.Description</small>
+                                        }
+                                        @if (ReportHtml.Describe(result.Result) is { Length: > 0 } message)
+                                        {
+                                            <span class="check-message">@message</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </section>
+                    }
+                    @if (running)
+                    {
+                        <p class="hint running-note">Running @progress.Test…</p>
+                    }
+                </div>
+            }
+        </div>
+    }
+</main>
+
+@code {
+    bool checkInterface = true;
+    bool includePrerelease;
+    bool checkClock;
+    WebSerialDevicePort? clockPort;
+    string? clockPortLabel;
+    string? ppsEventText;
+    string clockSamplesText = "5";
+    string? setupError;
+
+    bool running;
+    bool stopping;
+    CancellationTokenSource? cancellation;
+    VerificationProgress progress;
+    readonly List<SuiteResult> suites = [];
+    readonly List<MethodResult> results = [];
+    Report? report;
+    Status? filter;
+
+    bool HasDeviceSchema => Session.Schema.DeviceName is not null;
+
+    int PlannedChecks => VerificationRun.CountChecks(CreateOptions(validate: false) ?? new VerificationOptions(includePrerelease, null, null));
+
+    int Percent => progress.Total == 0 ? (running ? 0 : 100) : running ? progress.Completed * 100 / progress.Total : 100;
+
+    int Counts(Status status) => results.Count(result => result.Result.Status == status);
+
+    static string Checked(bool value) => value ? "true" : "false";
+
+    protected override void OnInitialized() => Session.Changed += OnChanged;
+
+    void OnChanged() => InvokeAsync(StateHasChanged);
+
+    async Task SelectClockPortAsync()
+    {
+        var selected = await Harp.WebSerial.WebSerial.RequestPortAsync();
+        if (selected is null)
+            return;
+        clockPort = new WebSerialDevicePort(selected);
+        clockPortLabel = selected.UsbVendorId is { } vendor ? $"USB {vendor:x4}:{selected.UsbProductId:x4}" : "Serial port";
+    }
+
+    VerificationOptions? CreateOptions(bool validate)
+    {
+        ClockTestOptions? clock = null;
+        if (checkClock && clockPort is not null)
+        {
+            int? ppsEvent = null;
+            if (!string.IsNullOrWhiteSpace(ppsEventText))
+            {
+                if (!int.TryParse(ppsEventText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var address) || address is < 0 or > 255)
+                {
+                    if (validate) setupError = "The pulse event register must be an address from 0 to 255.";
+                    return null;
+                }
+                ppsEvent = address;
+            }
+            if (!int.TryParse(clockSamplesText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var samples) || samples <= 0)
+            {
+                if (validate) setupError = "The number of pulse samples must be greater than zero.";
+                return null;
+            }
+            clock = new ClockTestOptions(clockPort, ppsEvent, samples);
+        }
+        else if (checkClock && validate)
+        {
+            setupError = "Select the reference clock port, or turn off clock alignment.";
+            return null;
+        }
+
+        return new VerificationOptions(includePrerelease, clock, checkInterface && HasDeviceSchema ? Session.Schema : null);
+    }
+
+    async Task RunAsync()
+    {
+        setupError = null;
+        if (CreateOptions(validate: true) is not { } options)
+            return;
+
+        suites.Clear();
+        results.Clear();
+        report = null;
+        filter = null;
+        progress = new VerificationProgress(0, VerificationRun.CountChecks(options), "", "Connecting");
+        running = true;
+        stopping = false;
+        cancellation = new CancellationTokenSource();
+        var portLabel = Session.PortLabel;
+        try
+        {
+            await Session.RunExclusiveAsync(async port =>
+            {
+                report = await VerificationRun.RunAsync(
+                    port,
+                    portLabel,
+                    options,
+                    value => { progress = value; StateHasChanged(); },
+                    (suite, result) =>
+                    {
+                        if (!suites.Contains(suite))
+                            suites.Add(suite);
+                        results.Add(result);
+                        StateHasChanged();
+                    },
+                    cancellation.Token);
+            }, reconnectDelay: TimeSpan.FromMilliseconds(500));
+        }
+        catch (Exception ex) when (ex is IOException or TimeoutException or InvalidOperationException or OperationCanceledException or Bonsai.Harp.HarpException)
+        {
+            report ??= new Report { DeviceName = Session.Identity?.DisplayName ?? "Harp Device", PortName = portLabel };
+            report.AbortReason = $"The verification could not run: {ex.Message}";
+        }
+        finally
+        {
+            running = false;
+            cancellation.Dispose();
+            cancellation = null;
+        }
+
+        // After a run with problems, show them first.
+        if (Counts(Status.Failed) + Counts(Status.Error) > 0)
+            filter = Counts(Status.Failed) > 0 ? Status.Failed : Status.Error;
+    }
+
+    void Stop()
+    {
+        stopping = true;
+        cancellation?.Cancel();
+    }
+
+    void Reset()
+    {
+        report = null;
+        suites.Clear();
+        results.Clear();
+        filter = null;
+    }
+
+    async Task DownloadReportAsync()
+    {
+        if (report is null)
+            return;
+        var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/app.js");
+        var name = string.Concat(report.DeviceName.Split(Path.GetInvalidFileNameChars())).Replace(' ', '-');
+        await module.InvokeVoidAsync("downloadText", $"{name}-verification-{report.RunDate:yyyyMMdd-HHmm}.html", ReportHtml.Generate(report));
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnChanged;
+        cancellation?.Cancel();
+    }
+}

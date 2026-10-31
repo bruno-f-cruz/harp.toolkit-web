@@ -28,6 +28,7 @@ sealed class EmulatedDevice : IDevicePort
         SetRegister(HarpCommand.WriteUInt32(TimestampSeconds.Address, 42));
         SetRegister(HarpCommand.WriteUInt16(SerialNumber.Address, 0x1234));
         SetRegister(HarpCommand.WriteByte(ResetDevice.Address, (byte)ResetFlags.BootFromEeprom));
+        SetRegister(HarpCommand.WriteByte(OperationControl.Address, 0x60));
         var nameBytes = new byte[25];
         System.Text.Encoding.ASCII.GetBytes(name).CopyTo(nameBytes, 0);
         SetRegister(HarpCommand.WriteByte(DeviceName.Address, nameBytes));
