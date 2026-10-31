@@ -1,7 +1,6 @@
 using System.Net.Http.Json;
 using System.Runtime.Versioning;
 using Bonsai.Harp;
-using Harp.Generators;
 using Harp.Toolkit.Web.Generation;
 using Harp.WebSerial;
 
@@ -25,17 +24,19 @@ public enum SessionState
 }
 
 /// <summary>
-/// Holds the selected serial port and the connection to its device, shared by every page so the
-/// device stays connected while moving between them.
+/// Holds the selected serial port, the connection to its device and the register schema,
+/// shared by every page so the device stays connected while moving between them.
 /// </summary>
 [SupportedOSPlatform("browser")]
 public sealed class DeviceSession(HttpClient http)
 {
+    readonly Dictionary<int, HarpMessage> latest = [];
     WebSerialDevicePort? port;
     IReadOnlyList<DeviceEntry>? catalog;
+    bool schemaFromUser;
 
     /// <summary>
-    /// Occurs when the state, identity or register map of the session changes.
+    /// Occurs when the state, identity or schema of the session changes.
     /// </summary>
     public event Action? Changed;
 
@@ -55,6 +56,11 @@ public sealed class DeviceSession(HttpClient http)
     public SessionState State { get; private set; } = SessionState.NoPort;
 
     /// <summary>
+    /// Gets a value indicating whether the device is connected.
+    /// </summary>
+    public bool IsConnected => State == SessionState.Connected && Connection is not null;
+
+    /// <summary>
     /// Gets the selected port, if any.
     /// </summary>
     public WebSerialPort? Port => port?.Port;
@@ -70,14 +76,19 @@ public sealed class DeviceSession(HttpClient http)
     public DeviceIdentity? Identity { get; private set; }
 
     /// <summary>
+    /// Gets the operation mode of the device, if known.
+    /// </summary>
+    public OperationMode? OperationMode { get; private set; }
+
+    /// <summary>
     /// Gets the catalog entry of the device, if its WhoAmI is registered.
     /// </summary>
     public DeviceEntry? CatalogEntry { get; private set; }
 
     /// <summary>
-    /// Gets the registers of the device, by address. Until the device metadata loads, only the core registers are known.
+    /// Gets the register schema of the device. Until device metadata loads, only the core registers are known.
     /// </summary>
-    public IReadOnlyDictionary<int, RegisterDescriptor> Registers { get; private set; } = RegisterDescriptor.Core;
+    public DeviceSchema Schema { get; private set; } = DeviceSchema.Core;
 
     /// <summary>
     /// Gets the message of the last error, if any.
@@ -90,6 +101,13 @@ public sealed class DeviceSession(HttpClient http)
     public string PortLabel => Port is { } selected
         ? selected.UsbVendorId is { } vendor ? $"USB {vendor:x4}:{selected.UsbProductId:x4}" : "Serial port"
         : "No port";
+
+    /// <summary>
+    /// Returns the last message received from the specified register, if any.
+    /// </summary>
+    /// <param name="address">The address of the register.</param>
+    /// <returns>The last message from the register, or <see langword="null"/>.</returns>
+    public HarpMessage? GetLatest(int address) => latest.GetValueOrDefault(address);
 
     /// <summary>
     /// Asynchronously loads Web Serial and selects the first port the user granted earlier, if any.
@@ -140,9 +158,12 @@ public sealed class DeviceSession(HttpClient http)
             connection.MessageReceived += OnMessageReceived;
             connection.Closed += OnConnectionClosed;
             Identity = await connection.ReadIdentityAsync();
+            OperationMode = OperationControl.GetPayload(
+                await connection.CommandAsync(HarpCommand.ReadByte(OperationControl.Address))).OperationMode;
             Connection = connection;
             SetState(SessionState.Connected, error: null);
-            await LoadRegistersAsync(Identity.WhoAmI);
+            if (!schemaFromUser || Schema.WhoAmI != Identity.WhoAmI)
+                await LoadRegistrySchemaAsync(Identity.WhoAmI);
         }
         catch (Exception ex)
         {
@@ -206,19 +227,52 @@ public sealed class DeviceSession(HttpClient http)
     }
 
     /// <summary>
-    /// Uses the register names and types in the specified metadata for the connected device.
+    /// Asynchronously sets the operation mode of the device, leaving its other operation settings unchanged.
     /// </summary>
-    /// <param name="metadata">The device metadata, or <see langword="null"/> for the core registers alone.</param>
-    public void UseMetadata(DeviceMetadata? metadata)
+    /// <param name="mode">The operation mode. Devices only send events in Active mode.</param>
+    /// <param name="dumpRegisters"><see langword="true"/> to also ask the device to send the value of every register.</param>
+    /// <returns>The task object representing the asynchronous operation.</returns>
+    public async Task SetOperationModeAsync(OperationMode mode, bool dumpRegisters = false)
     {
-        Registers = RegisterDescriptor.CreateMap(metadata);
+        var connection = Connection ?? throw new InvalidOperationException("Connect the device first.");
+        var current = OperationControl.GetPayload(await connection.CommandAsync(HarpCommand.ReadByte(OperationControl.Address)));
+        await connection.CommandAsync(OperationControl.FromPayload(MessageType.Write, new OperationControlPayload(
+            mode, dumpRegisters, current.MuteReplies, current.VisualIndicators, current.OperationLed, current.Heartbeat)));
+        OperationMode = mode;
         Changed?.Invoke();
     }
 
-    async Task LoadRegistersAsync(int whoAmI)
+    /// <summary>
+    /// Asynchronously reads the operation mode of the device again, after it may have changed.
+    /// </summary>
+    /// <returns>The task object representing the asynchronous operation.</returns>
+    public async Task RefreshOperationModeAsync()
+    {
+        if (Connection is not { } connection)
+            return;
+        OperationMode = OperationControl.GetPayload(
+            await connection.CommandAsync(HarpCommand.ReadByte(OperationControl.Address))).OperationMode;
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Uses the registers declared in a device.yml the user provided.
+    /// </summary>
+    /// <param name="yaml">The contents of the device metadata file.</param>
+    /// <param name="source">Where the file came from, for display.</param>
+    /// <exception cref="YamlDotNet.Core.YamlException">The metadata is not valid.</exception>
+    public void LoadSchema(string yaml, string source)
+    {
+        Schema = DeviceSchema.Parse(yaml, source);
+        schemaFromUser = true;
+        Changed?.Invoke();
+    }
+
+    async Task LoadRegistrySchemaAsync(int whoAmI)
     {
         CatalogEntry = null;
-        Registers = RegisterDescriptor.Core;
+        schemaFromUser = false;
+        Schema = DeviceSchema.Core;
         try
         {
             catalog ??= await http.GetFromJsonAsync<List<DeviceEntry>>("devices.json") ?? [];
@@ -226,12 +280,12 @@ public sealed class DeviceSession(HttpClient http)
             if (CatalogEntry is not null)
             {
                 var yaml = await http.GetStringAsync(CatalogEntry.DeviceUrl);
-                Registers = RegisterDescriptor.CreateMap(DeviceMetadata.Parse(yaml));
+                Schema = DeviceSchema.Parse(yaml, "Harp device registry");
             }
         }
         catch (Exception ex) when (ex is HttpRequestException or YamlDotNet.Core.YamlException or NotSupportedException)
         {
-            // The device metadata is optional: without it, registers are shown by address.
+            // The device metadata is optional: without it, only the core registers are described.
         }
         Changed?.Invoke();
     }
@@ -240,8 +294,9 @@ public sealed class DeviceSession(HttpClient http)
     {
         port = new WebSerialDevicePort(selected);
         Identity = null;
+        OperationMode = null;
         CatalogEntry = null;
-        Registers = RegisterDescriptor.Core;
+        latest.Clear();
         SetState(SessionState.Disconnected, error: null);
     }
 
@@ -252,7 +307,12 @@ public sealed class DeviceSession(HttpClient http)
         Changed?.Invoke();
     }
 
-    void OnMessageReceived(HarpMessage message) => MessageReceived?.Invoke(message);
+    void OnMessageReceived(HarpMessage message)
+    {
+        if (!message.Error)
+            latest[message.Address] = message;
+        MessageReceived?.Invoke(message);
+    }
 
     async void OnConnectionClosed(Exception? error)
     {

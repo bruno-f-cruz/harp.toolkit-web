@@ -7,6 +7,7 @@
 @inject DeviceSession Session
 
 <div class="toolbar">
+    <span class="pane-title">Messages</span>
     <div class="segmented" role="radiogroup" aria-label="Messages to show">
         @foreach (var option in Filters)
         {
@@ -14,8 +15,8 @@
         }
     </div>
     <span class="spacer"></span>
-    <span class="file-meta hide-narrow">@rate.ToString("0", CultureInfo.InvariantCulture) msg/s · @total total</span>
-    <button class="btn" @onclick="TogglePause">@(paused ? "Resume" : "Pause")</button>
+    <span class="file-meta">@rate.ToString("0", CultureInfo.InvariantCulture)/s</span>
+    <button class="btn" @onclick="TogglePause" title="@(paused ? "Show new messages again" : "Stop adding new messages")">@(paused ? "Resume" : "Pause")</button>
     <button class="btn" @onclick="Clear">Clear</button>
 </div>
 <div class="log" role="log" aria-live="off">
@@ -23,8 +24,8 @@
     {
         <div class="empty">
             <p>
-                @(Session.State == SessionState.Connected
-                    ? "Messages from the device appear here. Set the device to Active to stream events."
+                @(Session.IsConnected
+                    ? "Replies and events from the device appear here. Switch the device to Active to stream events."
                     : "Connect a device to see its messages.")
             </p>
         </div>
@@ -33,14 +34,15 @@
     {
         <table>
             <thead>
-                <tr><th>Time (s)</th><th>Type</th><th>Register</th><th>Payload</th></tr>
+                <tr><th>Time (s)</th><th>Type</th><th>Register</th><th>Value</th></tr>
             </thead>
             <tbody>
                 @foreach (var entry in visible)
                 {
-                    <tr class="@(entry.Error ? "row-error" : null)">
+                    <tr class="@(entry.Error ? "row-error" : null) @(OnSelect.HasDelegate ? "clickable" : null)"
+                        title="@(OnSelect.HasDelegate ? "Open this register" : null)" @onclick="() => OnSelect.InvokeAsync(entry.Address)">
                         <td class="num">@entry.Time</td>
-                        <td>@entry.Type</td>
+                        <td><span class="type type-@entry.Type.ToLowerInvariant()">@entry.Type</span></td>
                         <td title="Address @entry.Address">@entry.Register</td>
                         <td class="payload">@entry.Payload</td>
                     </tr>
@@ -62,9 +64,10 @@
     string filter = "All";
     bool paused;
     bool dirty;
-    long total;
     long countSinceRate;
     double rate;
+
+    [Parameter] public EventCallback<int> OnSelect { get; set; }
 
     record LogEntry(string Time, string Type, int Address, string Register, string Payload, bool Error, bool IsEvent);
 
@@ -77,7 +80,6 @@
 
     void OnMessage(HarpMessage message)
     {
-        total++;
         countSinceRate++;
         if (paused)
             return;
@@ -91,21 +93,30 @@
     LogEntry ToEntry(HarpMessage message)
     {
         var time = message.TryGetTimestamp(out var timestamp) ? timestamp.ToString("0.000000", CultureInfo.InvariantCulture) : "";
-        var register = Session.Registers.TryGetValue(message.Address, out var descriptor) ? descriptor.Name : message.Address.ToString(CultureInfo.InvariantCulture);
+        var register = Session.Schema.Registers.GetValueOrDefault(message.Address);
         string payload;
-        try
+        if (message.Error)
+            payload = "rejected";
+        else
         {
-            payload = PayloadFormat.FormatText(message) is { Length: > 1 } text && descriptor?.Length > 1
-                ? $"\"{text}\""
-                : PayloadFormat.Format(message);
-        }
-        catch (Exception)
-        {
-            payload = Convert.ToHexString(message.MessageBytes);
+            try
+            {
+                payload = register is not null ? PayloadCodec.Summarize(register, message) : PayloadFormat.Format(message);
+            }
+            catch (FormatException)
+            {
+                payload = Convert.ToHexString(message.GetPayload());
+            }
         }
 
-        var type = message.MessageType.ToString() + (message.Error ? " error" : "");
-        return new LogEntry(time, type, message.Address, register, payload, message.Error, message.MessageType == MessageType.Event);
+        return new LogEntry(
+            time,
+            message.MessageType.ToString(),
+            message.Address,
+            register?.Name ?? message.Address.ToString(CultureInfo.InvariantCulture),
+            payload,
+            message.Error,
+            message.MessageType == MessageType.Event);
     }
 
     void Refresh()
@@ -145,7 +156,6 @@
     void Clear()
     {
         entries.Clear();
-        total = 0;
         dirty = true;
         Refresh();
     }

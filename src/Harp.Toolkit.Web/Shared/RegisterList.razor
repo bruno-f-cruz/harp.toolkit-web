@@ -1,0 +1,145 @@
+@using System.Runtime.Versioning
+@using Microsoft.AspNetCore.Components.Forms
+@attribute [SupportedOSPlatform("browser")]
+@implements IDisposable
+@inject DeviceSession Session
+@inject IJSRuntime JS
+
+<div class="toolbar register-toolbar">
+    <input id="register-search" class="search" type="search" placeholder="Search registers" spellcheck="false"
+           @bind="query" @bind:event="oninput" aria-label="Search registers" />
+</div>
+<div class="schema-line">
+    <div class="schema-source" title="@Session.Schema.Source">
+        @if (Session.Schema.DeviceName is { } name)
+        {
+            <strong>@name</strong>
+            <span class="detail">from @Session.Schema.Source</span>
+        }
+        else
+        {
+            <strong>Core registers</strong>
+            <span class="detail">no device.yml loaded</span>
+        }
+    </div>
+    <div class="schema-actions">
+        <span class="detail">Load registers:</span>
+        <label class="link-button" title="Describe the device registers with a device.yml file">
+            from file
+            <InputFile accept=".yml,.yaml" class="visually-hidden" OnChange="OnFileSelectedAsync" />
+        </label>
+        <button class="link-button" title="Use the device.yml open in the Generate tab" @onclick="UseGeneratorMetadataAsync">from Generate tab</button>
+    </div>
+</div>
+@if (schemaError is not null)
+{
+    <div class="status-line status-error schema-error" role="alert" title="@schemaError">@Icons.Error <span>@schemaError</span></div>
+}
+<div class="register-list" role="listbox" aria-label="Registers">
+    @foreach (var group in Groups)
+    {
+        <div class="register-group">@group.Key</div>
+        @foreach (var register in group)
+        {
+            var latest = Session.GetLatest(register.Address);
+            <button class="register-item" role="option" aria-selected="@(register.Address == Selected ? "true" : "false")"
+                    @onclick="() => OnSelect.InvokeAsync(register.Address)">
+                <span class="register-address">@register.Address</span>
+                <span class="register-name">@register.Name</span>
+                <span class="access">
+                    <span class="badge @(register.HasEvents ? "badge-event" : "badge-dim")" title="@(register.HasEvents ? "Sends events" : "No events")">E</span>
+                    <span class="badge @(register.IsWritable ? "badge-write" : "badge-dim")" title="@(register.IsWritable ? "Writable" : "Read only")">W</span>
+                </span>
+                @if (latest is not null)
+                {
+                    <span class="register-latest">@Summarize(register, latest)</span>
+                }
+            </button>
+        }
+    }
+    @if (!Groups.Any())
+    {
+        <p class="hint empty-list">No register matches “@query”.</p>
+    }
+</div>
+
+@code {
+    const int RefreshMilliseconds = 250;
+
+    string query = "";
+    string? schemaError;
+    Timer? refresh;
+
+    [Parameter] public int? Selected { get; set; }
+
+    [Parameter] public EventCallback<int> OnSelect { get; set; }
+
+    IEnumerable<IGrouping<string, RegisterSchema>> Groups => Session.Schema.Registers.Values
+        .Where(Matches)
+        .GroupBy(register => register.IsCore ? "Core" : Session.Schema.DeviceName ?? "Device")
+        .OrderBy(group => group.Key == "Core" ? 1 : 0);
+
+    bool Matches(RegisterSchema register)
+    {
+        var needle = query.Trim();
+        return needle.Length == 0 ||
+            register.Name.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+            register.Address.ToString() == needle;
+    }
+
+    static string Summarize(RegisterSchema register, Bonsai.Harp.HarpMessage message)
+    {
+        try { return PayloadCodec.Summarize(register, message); }
+        catch (FormatException) { return "?"; }
+    }
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnChanged;
+        // Live values change with every event, so redraw on a timer rather than per message.
+        refresh = new Timer(_ => InvokeAsync(() => { if (Session.IsConnected) StateHasChanged(); }), null, RefreshMilliseconds, RefreshMilliseconds);
+    }
+
+    async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            using var reader = new StreamReader(e.File.OpenReadStream(maxAllowedSize: 1024 * 1024));
+            Session.LoadSchema(await reader.ReadToEndAsync(), e.File.Name);
+            schemaError = null;
+        }
+        catch (Exception ex) when (ex is YamlDotNet.Core.YamlException or IOException)
+        {
+            schemaError = $"{e.File.Name} is not a valid device.yml. {ex.Message}";
+        }
+    }
+
+    async Task UseGeneratorMetadataAsync()
+    {
+        var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/app.js");
+        var yaml = await module.InvokeAsync<string?>("loadSetting", "yaml");
+        if (string.IsNullOrWhiteSpace(yaml))
+        {
+            schemaError = "The Generate tab has no device.yml open.";
+            return;
+        }
+
+        try
+        {
+            Session.LoadSchema(yaml, "Generate tab");
+            schemaError = null;
+        }
+        catch (YamlDotNet.Core.YamlException ex)
+        {
+            schemaError = $"The device.yml in the Generate tab has errors. {ex.Message}";
+        }
+    }
+
+    void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Session.Changed -= OnChanged;
+        refresh?.Dispose();
+    }
+}

@@ -1127,6 +1127,493 @@ label.btn {
   color: var(--error);
 }
 
+.log tr.clickable {
+  cursor: pointer;
+}
+
+.log tr.clickable:hover td {
+  background: var(--surface);
+}
+
+.type {
+  font: 11px var(--mono);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.type-event {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.type-write {
+  color: var(--brand-text);
+}
+
+/* Device page: a full-width device bar over registers, the selected register and messages. */
+.device-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.device-page > .workspace {
+  flex: 1;
+}
+
+.device-page > .status-line {
+  border-bottom: 1px solid var(--border);
+}
+
+.device-bar {
+  flex: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.device-bar-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 16px;
+  min-height: 52px;
+}
+
+.device-bar-main .spacer {
+  flex: 1;
+}
+
+.device-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.device-title strong {
+  font-size: 16px;
+}
+
+.chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font: 12px var(--mono);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.device-workspace {
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1.25fr) minmax(0, 1fr);
+}
+
+.pane > .panel-body:only-child {
+  flex: 1;
+}
+
+/* Register list */
+.register-toolbar .search {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.schema-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.schema-source {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.schema-source strong {
+  font-size: 13px;
+}
+
+.schema-source .detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schema-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+
+.schema-error {
+  max-height: 96px;
+  overflow: auto;
+  font-size: 12px;
+  align-items: flex-start;
+}
+
+.link-button {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.register-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.register-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font: 600 11px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.register-item {
+  display: grid;
+  grid-template-columns: 2.2em minmax(0, 1fr) auto;
+  grid-template-areas:
+    "address name access"
+    ". latest latest";
+  gap: 0 8px;
+  width: 100%;
+  padding: 6px 12px 6px 9px;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.register-item:hover {
+  background: var(--surface);
+}
+
+.register-item[aria-selected="true"] {
+  border-left-color: var(--brand);
+  background: var(--surface-2);
+}
+
+.register-address {
+  grid-area: address;
+  align-self: center;
+  color: var(--muted);
+  font: 12px var(--mono);
+  text-align: right;
+}
+
+.register-name {
+  grid-area: name;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.access {
+  grid-area: access;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.badge {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font: 600 10px var(--mono);
+}
+
+.badge-event {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.badge-write {
+  background: color-mix(in srgb, var(--brand) 16%, transparent);
+  color: var(--brand-text);
+}
+
+.badge-dim {
+  color: var(--border);
+}
+
+.register-latest {
+  grid-area: latest;
+  overflow: hidden;
+  color: var(--muted);
+  font: 12px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-list {
+  padding: 12px;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.notice span {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* Register editor */
+.register-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.register-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.register-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.register-description {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.live-value {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.live-value-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.live-value .label,
+.fields h3 {
+  margin: 0;
+  color: var(--muted);
+  font: 600 11px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.live-value .value {
+  font: 16px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.live-value .value.muted {
+  color: var(--muted);
+  font: 14px var(--font);
+}
+
+.live-value .detail {
+  font: 12px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.fields {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.fields-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.fields-header .spacer {
+  flex: 1;
+}
+
+.fields > .row,
+.fields > .hint {
+  padding: 12px 14px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  align-items: start;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--surface-2);
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field-name {
+  font: 500 13px var(--mono);
+}
+
+.field-label small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.field-input {
+  min-width: 0;
+}
+
+.field-input input[type="text"],
+.field-input select {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px var(--mono);
+}
+
+.field-input input:disabled,
+.field-input select:disabled {
+  opacity: 0.7;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  cursor: pointer;
+}
+
+.flag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.flag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.flag-chip input {
+  margin: 0;
+}
+
+.flag-chip.on {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, var(--bg));
+  color: var(--brand-text);
+}
+
+.number-inputs.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+}
+
+.number-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+  font: 11px var(--mono);
+}
+
+.register-editor > .status-line {
+  border-radius: 6px;
+}
+
+/* Medium screens: messages move under the register panes. */
+@media (max-width: 1200px) {
+  .device-workspace {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(200px, 38%);
+  }
+
+  .device-workspace > .pane:last-child {
+    grid-column: 1 / -1;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
 /* Narrow screens: stack the panes. */
 @media (max-width: 860px) {
   .workspace {
@@ -1145,6 +1632,39 @@ label.btn {
 
   .field input[type="text"] {
     width: 150px;
+  }
+
+  .device-page {
+    overflow: auto;
+  }
+
+  /* The page scrolls as a whole: the lists keep a fixed height and the editor grows with its fields. */
+  .device-page > .workspace {
+    flex: none;
+  }
+
+  .device-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-rows: auto;
+  }
+
+  .device-workspace > .pane:first-child {
+    height: 50vh;
+  }
+
+  .device-workspace > .pane:last-child {
+    grid-column: auto;
+    height: 60vh;
+  }
+
+  .device-workspace .panel-body {
+    overflow: visible;
+  }
+
+  .field-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
   }
 }
 

@@ -1,0 +1,75 @@
+@using System.Runtime.Versioning
+@attribute [SupportedOSPlatform("browser")]
+@implements IDisposable
+@inject DeviceSession Session
+
+<div class="device-bar">
+    <div class="device-bar-main">
+        <span class="state-dot state-@Session.State.ToString().ToLowerInvariant()" title="@StateText" aria-hidden="true"></span>
+        @if (Session.Identity is { } identity && Session.IsConnected)
+        {
+            <div class="device-title">
+                <strong>@identity.DisplayName</strong>
+                <span class="chips">
+                    <span class="chip" title="Device identity class">WhoAmI @identity.WhoAmI</span>
+                    @if (identity.SerialNumber is { } serial)
+                    {
+                        <span class="chip" title="Serial number">SN @serial.ToString("x4")</span>
+                    }
+                    <span class="chip" title="Firmware version">FW @identity.FirmwareVersion</span>
+                    <span class="chip hide-narrow" title="Hardware version">HW @identity.HardwareVersion</span>
+                    <span class="chip hide-narrow" title="Harp core version">Core @identity.CoreVersion</span>
+                </span>
+            </div>
+        }
+        else
+        {
+            <div class="device-title">
+                <strong>@StateText</strong>
+                @if (Session.State == SessionState.Disconnected)
+                {
+                    <span class="chips"><span class="chip">@Session.PortLabel</span></span>
+                }
+            </div>
+        }
+        <span class="spacer"></span>
+        @ChildContent
+        <button class="btn" disabled="@(Session.State is SessionState.Connecting or SessionState.Busy)" @onclick="Session.SelectPortAsync"
+                title="Choose which serial port to use">
+            @Icons.Plug <span class="hide-narrow">@(Session.Port is null ? "Select port" : "Change port")</span>
+        </button>
+        @if (Session.IsConnected)
+        {
+            <button class="btn" @onclick="Session.DisconnectAsync">Disconnect</button>
+        }
+        else if (Session.Port is not null)
+        {
+            <button class="btn btn-primary" disabled="@(Session.State != SessionState.Disconnected)" @onclick="Session.ConnectAsync">
+                @(Session.State == SessionState.Connecting ? "Connecting…" : "Connect")
+            </button>
+        }
+    </div>
+    @if (Session.Error is { } error)
+    {
+        <div class="status-line status-error" role="alert">@Icons.Error <span>@error</span></div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    string StateText => Session.State switch
+    {
+        SessionState.NoPort => "No device selected",
+        SessionState.Disconnected => "Disconnected",
+        SessionState.Connecting => "Connecting…",
+        SessionState.Busy => "Updating…",
+        _ => "Connected"
+    };
+
+    protected override void OnInitialized() => Session.Changed += OnChanged;
+
+    void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Session.Changed -= OnChanged;
+}

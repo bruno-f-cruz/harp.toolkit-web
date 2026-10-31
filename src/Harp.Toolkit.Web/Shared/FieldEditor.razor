@@ -1,0 +1,137 @@
+@using System.Globalization
+
+<div class="field-row">
+    <div class="field-label">
+        <span class="field-name">@Field.Name</span>
+        @if (!string.IsNullOrWhiteSpace(Field.Description))
+        {
+            <small>@Field.Description</small>
+        }
+        @if (RangeText is { } range)
+        {
+            <small>@range</small>
+        }
+        @if (Field.IsRaw)
+        {
+            <small>Raw payload: this field has a custom conversion the browser cannot apply.</small>
+        }
+    </div>
+    <div class="field-input">
+        @switch (Field.Kind)
+        {
+            case FieldKind.Bool:
+                <label class="switch">
+                    <input id="@Id" type="checkbox" checked="@Value.Bool" disabled="@ReadOnly"
+                           @onchange="e => Update(() => Value.Bool = e.Value is true)" />
+                    <span>@(Value.Bool ? "On" : "Off")</span>
+                </label>
+                break;
+
+            case FieldKind.Choice when Field.Options.Count <= 4:
+                <div class="segmented" role="radiogroup" aria-label="@Field.Name">
+                    @foreach (var option in Field.Options)
+                    {
+                        <button role="radio" aria-checked="@(Value.Bits == option.Value ? "true" : "false")" disabled="@ReadOnly"
+                                title="@option.Description" @onclick="() => Update(() => Value.Bits = option.Value)">@option.Name</button>
+                    }
+                </div>
+                break;
+
+            case FieldKind.Choice:
+                <select id="@Id" class="btn" disabled="@ReadOnly" aria-label="@Field.Name"
+                        @onchange="SelectChoice">
+                    @if (!Field.Options.Any(option => option.Value == Value.Bits))
+                    {
+                        <option value="@Value.Bits" selected>0x@(Value.Bits.ToString("X"))</option>
+                    }
+                    @foreach (var option in Field.Options)
+                    {
+                        <option value="@option.Value" selected="@(Value.Bits == option.Value)">@option.Name</option>
+                    }
+                </select>
+                break;
+
+            case FieldKind.Flags:
+                <div class="flag-chips">
+                    @foreach (var option in Field.Options)
+                    {
+                        var isSet = (Value.Bits & option.Value) == option.Value;
+                        <label class="flag-chip @(isSet ? "on" : null)" title="@option.Description">
+                            <input type="checkbox" checked="@isSet" disabled="@ReadOnly"
+                                   @onchange="e => Update(() => Value.Bits = e.Value is true ? Value.Bits | option.Value : Value.Bits & ~option.Value)" />
+                            @option.Name
+                        </label>
+                    }
+                </div>
+                break;
+
+            case FieldKind.Text:
+                <input id="@Id" type="text" spellcheck="false" maxlength="@Field.Count" value="@Value.Text" disabled="@ReadOnly"
+                       @onchange="e => Update(() => Value.Text = e.Value?.ToString() ?? string.Empty)" aria-label="@Field.Name" />
+                break;
+
+            default:
+                <div class="number-inputs @(Field.Count > 1 ? "grid" : null)">
+                    @for (int i = 0; i < Field.Count; i++)
+                    {
+                        var index = i;
+                        <label>
+                            @if (Field.Count > 1)
+                            {
+                                <span>[@index]</span>
+                            }
+                            <input id="@($"{Id}-{index}")" type="text" inputmode="decimal" spellcheck="false" disabled="@ReadOnly"
+                                   value="@(index < Value.Numbers.Length ? Value.Numbers[index] : "0")"
+                                   @onchange="e => Update(() => SetNumber(index, e.Value?.ToString() ?? string.Empty))" aria-label="@($"{Field.Name} {index}")" />
+                        </label>
+                    }
+                </div>
+                break;
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FieldSchema Field { get; set; } = null!;
+
+    [Parameter, EditorRequired] public FieldValue Value { get; set; } = null!;
+
+    [Parameter] public bool ReadOnly { get; set; }
+
+    [Parameter] public string IdPrefix { get; set; } = "field";
+
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    string Id => $"{IdPrefix}-{Field.Name}";
+
+    string? RangeText => (Field.MinValue, Field.MaxValue) switch
+    {
+        ({ } min, { } max) => $"From {min} to {max}",
+        ({ } min, null) => $"At least {min}",
+        (null, { } max) => $"At most {max}",
+        _ => null
+    };
+
+    async Task SelectChoice(ChangeEventArgs e)
+    {
+        if (ulong.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var bits))
+            await Update(() => Value.Bits = bits);
+    }
+
+    void SetNumber(int index, string text)
+    {
+        if (Value.Numbers.Length < Field.Count)
+        {
+            var numbers = Value.Numbers;
+            Array.Resize(ref numbers, Field.Count);
+            Value.Numbers = numbers.Select(number => number ?? "0").ToArray();
+        }
+        Value.Numbers[index] = text.Trim();
+    }
+
+    async Task Update(Action change)
+    {
+        change();
+        await OnChanged.InvokeAsync();
+    }
+}

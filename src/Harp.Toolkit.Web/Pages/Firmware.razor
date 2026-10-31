@@ -10,6 +10,11 @@
 
 <PageTitle>Firmware · Harp.Toolkit</PageTitle>
 
+<div class="device-page">
+@if (Session.IsSupported)
+{
+    <DeviceBar />
+}
 <main class="workspace">
     @if (!Session.IsSupported)
     {
@@ -18,7 +23,6 @@
     else
     {
         <section class="pane" aria-label="Firmware update">
-            <DeviceToolbar />
             <div class="panel-body">
                 <section class="card">
                     <h2>Firmware file</h2>
@@ -112,6 +116,7 @@
         </section>
     }
 </main>
+</div>
 
 @code {
     const long MaxFileSize = 4 * 1024 * 1024;

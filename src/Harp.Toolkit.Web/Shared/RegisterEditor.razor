@@ -1,0 +1,204 @@
+@using System.Globalization
+@using System.Runtime.Versioning
+@using Bonsai.Harp
+@attribute [SupportedOSPlatform("browser")]
+@implements IDisposable
+@inject DeviceSession Session
+
+<div class="register-editor">
+    <header class="register-header">
+        <div class="register-heading">
+            <h2>@Register.Name</h2>
+            <span class="chips">
+                <span class="chip">Address @Register.Address</span>
+                <span class="chip">@Register.Type@(Register.Length > 0 ? $"[{Register.Length}]" : null)</span>
+                <span class="chip">@AccessText</span>
+                <span class="chip">@(Register.IsCore ? "Core" : "Device")</span>
+            </span>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(Register.Description))
+        {
+            <p class="register-description">@Register.Description</p>
+        }
+    </header>
+
+    <section class="live-value" aria-live="polite">
+        <div class="live-value-text">
+            <span class="label">Current value</span>
+            @if (Session.GetLatest(Register.Address) is { } latest)
+            {
+                <span class="value">@Summarize(latest)</span>
+                <span class="detail">
+                    @latest.MessageType@(latest.TryGetTimestamp(out var timestamp) ? $" at {timestamp.ToString("0.000", CultureInfo.InvariantCulture)} s" : null)
+                    · bytes @Convert.ToHexString(latest.GetPayload())
+                </span>
+            }
+            else
+            {
+                <span class="value muted">@(Session.IsConnected ? "Not read yet" : "Connect a device to read")</span>
+            }
+        </div>
+        <button class="btn" disabled="@(!Session.IsConnected || busy)" @onclick="ReadAsync">Read</button>
+    </section>
+
+    <section class="fields">
+        <div class="fields-header">
+            <h3>@(Register.IsWritable ? "Write" : "Fields")</h3>
+            @if (Register.IsWritable)
+            {
+                <span class="spacer"></span>
+                @if (edited)
+                {
+                    <button class="link-button" @onclick="ResetToLatest" title="Discard edits and show the current value">Discard edits</button>
+                }
+            }
+        </div>
+        @foreach (var field in Register.Fields)
+        {
+            <FieldEditor Field="field" Value="values[field.Name]" ReadOnly="@(!Register.IsWritable || busy)"
+                         IdPrefix="@($"r{Register.Address}")" OnChanged="() => edited = true" />
+        }
+        @if (Register.IsWritable)
+        {
+            <div class="row">
+                <button class="btn btn-primary" disabled="@(!Session.IsConnected || busy)" @onclick="WriteAsync">Write to device</button>
+                @if (!Session.IsConnected)
+                {
+                    <span class="hint">Connect a device to write.</span>
+                }
+            </div>
+        }
+        else
+        {
+            <p class="hint">This register is read only.</p>
+        }
+    </section>
+
+    @if (status is not null)
+    {
+        <div class="status-line @(statusError ? "status-error" : "status-ok")" role="status">
+            @(statusError ? Icons.Error : Icons.Check) <span>@status</span>
+        </div>
+    }
+</div>
+
+@code {
+    const int RefreshMilliseconds = 250;
+
+    Dictionary<string, FieldValue> values = [];
+    RegisterSchema? shown;
+    bool edited;
+    bool busy;
+    string? status;
+    bool statusError;
+    Timer? refresh;
+
+    [Parameter, EditorRequired] public RegisterSchema Register { get; set; } = null!;
+
+    string AccessText => string.Join(" · ", new[]
+    {
+        "Read",
+        Register.IsWritable ? "Write" : null,
+        Register.HasEvents ? "Event" : null
+    }.Where(text => text is not null));
+
+    protected override void OnInitialized()
+    {
+        refresh = new Timer(_ => InvokeAsync(() => { if (Session.IsConnected) StateHasChanged(); }), null, RefreshMilliseconds, RefreshMilliseconds);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(shown, Register))
+            return;
+
+        shown = Register;
+        status = null;
+        edited = false;
+        values = Session.GetLatest(Register.Address) is { } latest && TryDecode(latest) is { } decoded
+            ? decoded
+            : PayloadCodec.CreateDefault(Register);
+        if (Session.IsConnected)
+            await ReadAsync();
+    }
+
+    async Task ReadAsync()
+    {
+        if (Session.Connection is not { } connection)
+            return;
+
+        busy = true;
+        try
+        {
+            var reply = await connection.CommandAsync(HarpCommand.Read(Register.Address, Register.Type));
+            if (!edited && TryDecode(reply) is { } decoded)
+                values = decoded;
+            SetStatus(null, error: false);
+        }
+        catch (Exception ex) when (ex is HarpException or TimeoutException or IOException)
+        {
+            SetStatus(ex is HarpException ? $"The device rejected the read of {Register.Name}." : ex.Message, error: true);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    async Task WriteAsync()
+    {
+        if (Session.Connection is not { } connection)
+            return;
+
+        busy = true;
+        try
+        {
+            var command = PayloadCodec.Encode(Register, values);
+            await connection.CommandAsync(command);
+            edited = false;
+            SetStatus($"Wrote {PayloadCodec.Summarize(Register, command)}", error: false);
+            if (Register.Address == OperationControl.Address)
+                await Session.RefreshOperationModeAsync();
+        }
+        catch (FormatException ex)
+        {
+            SetStatus(ex.Message, error: true);
+        }
+        catch (Exception ex) when (ex is HarpException or TimeoutException or IOException)
+        {
+            SetStatus(ex is HarpException ? $"The device rejected the value for {Register.Name}." : ex.Message, error: true);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    void ResetToLatest()
+    {
+        edited = false;
+        values = Session.GetLatest(Register.Address) is { } latest && TryDecode(latest) is { } decoded
+            ? decoded
+            : PayloadCodec.CreateDefault(Register);
+    }
+
+    Dictionary<string, FieldValue>? TryDecode(HarpMessage message)
+    {
+        try { return PayloadCodec.Decode(Register, message); }
+        catch (FormatException) { return null; }
+    }
+
+    string Summarize(HarpMessage message)
+    {
+        try { return PayloadCodec.Summarize(Register, message); }
+        catch (FormatException ex) { return ex.Message; }
+    }
+
+    void SetStatus(string? text, bool error)
+    {
+        status = text;
+        statusError = error;
+    }
+
+    public void Dispose() => refresh?.Dispose();
+}

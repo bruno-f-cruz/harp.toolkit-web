@@ -196,14 +196,6 @@ public sealed class DeviceProtocolTests
         Assert.ThrowsExactly<FormatException>(() => PayloadFormat.CreateWrite(40, PayloadType.U8, "300"));
     }
 
-    [TestMethod]
-    public void RegisterDescriptor_Core_ComesFromGenerators()
-    {
-        Assert.AreEqual("WhoAmI", RegisterDescriptor.Core[0].Name);
-        Assert.AreEqual(PayloadType.U16, RegisterDescriptor.Core[0].Type);
-        Assert.IsTrue(RegisterDescriptor.Core.ContainsKey(DeviceName.Address));
-    }
-
     static DeviceFirmware CreateFirmware(string name, int pages)
     {
         var data = Enumerable.Range(0, pages * AtxmegaBootloader.ImagePageSize).Select(i => (byte)(i * 7)).ToArray();

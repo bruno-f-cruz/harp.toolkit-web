@@ -5,7 +5,7 @@
 | Page | What it does | Browsers |
 |---|---|---|
 | **Generate** | Generates the C# and Python interfaces and the firmware of a device from its `device.yml` | All |
-| **Device** | Connects to a device over USB serial, shows its identity and versions, switches it between Standby and Active, reads and writes any register, and logs every message it sends | Chrome, Edge |
+| **Device** | Connects to a device over USB serial and builds a control panel for it from its `device.yml`: every register gets controls for its payload (checkboxes for bit masks, choices for group masks, switches, text and number fields with their limits), filled from a live read. Also shows the device identity, switches it between Standby and Active, and decodes every message it sends | Chrome, Edge |
 | **Firmware** | Updates the firmware of an ATxmega device from a `.hex` release file, checking first that the file supports the device | Chrome, Edge |
 
 The device pages use the [Web Serial API](https://developer.mozilla.org/docs/Web/API/Web_Serial_API), which only Chromium-based desktop browsers implement, and only on pages served over HTTPS or from `localhost`.
@@ -29,7 +29,8 @@ Everything runs as .NET in WebAssembly. The parts that cannot run in the browser
 - **Serial ports.** `System.IO.Ports` does not work in WebAssembly. Harp.WebSerial wraps Web Serial in a `Stream`.
 - **Harp messages.** Bonsai.Harp reads its serial port synchronously on a dedicated thread, which the browser cannot do. [`HarpMessageReader`](src/Harp.Toolkit.Web/Devices/HarpMessageReader.cs) is an asynchronous port of its parser. [`HarpConnection`](src/Harp.Toolkit.Web/Devices/HarpConnection.cs) matches each command to its reply. Bonsai.Harp itself is still used for message types and core register definitions.
 - **Firmware updates.** Harp.Toolkit.Core opens ports by name, so [`AtxmegaBootloader`](src/Harp.Toolkit.Web/Devices/AtxmegaBootloader.cs) follows its bootloader protocol step for step over an [`IDevicePort`](src/Harp.Toolkit.Web/Devices/IDevicePort.cs). Firmware files are still parsed by Harp.Toolkit.Core.
-- **Register names.** These come from the device's `device.yml` in the [whoami registry](https://github.com/harp-tech/whoami), looked up by WhoAmI. Core registers come from the `core.yml` embedded in Harp.Generators.
+- **Register controls.** The generated C# interface cannot be compiled in the browser without shipping Roslyn, so [`DeviceSchema`](src/Harp.Toolkit.Web/Devices/DeviceSchema.cs) reads the same metadata Harp.Generators reads and lays out each payload the way the generated code does: member offsets, masks and shifts, bool and string members, and primitive types spanning several elements. [`PayloadCodec`](src/Harp.Toolkit.Web/Devices/PayloadCodec.cs) then decodes and encodes payloads with it. Members with a custom converter are shown as raw elements.
+- **Device metadata.** The `device.yml` comes from the [whoami registry](https://github.com/harp-tech/whoami), looked up by WhoAmI when the device connects, from a file, or from the Generate tab for a device in development. Core registers come from the `core.yml` embedded in Harp.Generators. Metadata is not validated as strictly as for code generation, since some published device files break generator rules but describe working registers.
 
 The protocol code depends only on `Stream`, so the tests run it against an emulated device on desktop .NET, including a full firmware update.
 
