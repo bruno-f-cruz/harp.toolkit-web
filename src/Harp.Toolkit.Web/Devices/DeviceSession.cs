@@ -115,12 +115,12 @@ public sealed class DeviceSession(HttpClient http)
     /// <returns>The task object representing the asynchronous operation.</returns>
     public async Task InitializeAsync()
     {
-        await WebSerial.WebSerial.InitializeAsync();
-        IsSupported = WebSerial.WebSerial.IsSupported;
+        await SerialPorts.InitializeAsync();
+        IsSupported = SerialPorts.IsSupported;
         if (!IsSupported)
             return;
 
-        var granted = await WebSerial.WebSerial.GetPortsAsync();
+        var granted = await SerialPorts.GetPortsAsync();
         if (granted.Length > 0)
             SetPort(granted[0]);
     }
@@ -131,7 +131,7 @@ public sealed class DeviceSession(HttpClient http)
     /// <returns>The task object representing the asynchronous operation.</returns>
     public async Task SelectPortAsync()
     {
-        var selected = await WebSerial.WebSerial.RequestPortAsync();
+        var selected = await SerialPorts.RequestPortAsync();
         if (selected is null)
             return;
 
