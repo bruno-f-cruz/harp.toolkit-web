@@ -1749,6 +1749,43 @@ label.btn {
   font-weight: 600;
 }
 
+/* Frame fields share one color in the Hex bytes and the Fields columns, so each view keys the other. */
+.log .hx-type {
+  color: var(--code-keyword);
+}
+
+.log .hx-length,
+.log .hx-port {
+  color: var(--muted);
+}
+
+.log .hx-address {
+  color: var(--code-title);
+}
+
+.log .hx-payloadtype {
+  color: var(--warn);
+}
+
+.log .hx-timestamp,
+.log td.num.hx-timestamp {
+  color: var(--code-number);
+}
+
+.log .hx-payload {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.log .hx-checksum {
+  color: var(--ok);
+}
+
+.log .hx-invalid {
+  color: var(--error);
+  font-weight: 600;
+}
+
 /* Medium screens: a narrower register list. */
 @media (max-width: 1200px) {
   .device-workspace {
