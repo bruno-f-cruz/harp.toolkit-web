@@ -82,6 +82,8 @@ jobs:
         run: |
           sed -i 's|<base href="/" />|<base href="${{ steps.pages.outputs.base_path }}/" />|' publish/wwwroot/index.html
           touch publish/wwwroot/.nojekyll
+          # Pages answers unknown paths such as /firmware with 404.html, so serve the app from it.
+          cp publish/wwwroot/index.html publish/wwwroot/404.html
 
       - uses: actions/upload-pages-artifact@v3
         if: steps.changes.outputs.changed == 'true' && github.event_name != 'pull_request'
