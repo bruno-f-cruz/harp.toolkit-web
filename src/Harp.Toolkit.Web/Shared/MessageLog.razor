@@ -62,7 +62,18 @@
     {
         <table>
             <thead>
-                <tr><th>Time (s)</th><th>Type</th><th>Register</th><th>Value</th><th class="hide-narrow">Bytes</th></tr>
+                <tr>
+                    <th>Time (s)</th><th>Type</th><th>Register</th><th>Value</th>
+                    <th class="hide-narrow">
+                        Frame
+                        <span class="frame-legend" aria-hidden="true">
+                            @foreach (var (field, label) in Legend)
+                            {
+                                <span class="fb fb-@field">@label</span>
+                            }
+                        </span>
+                    </th>
+                </tr>
             </thead>
             <tbody>
                 @foreach (var entry in visible)
@@ -75,7 +86,13 @@
                         <td><span class="type type-@entry.Type.ToLowerInvariant()">@entry.Type</span></td>
                         <td title="Address @entry.Address">@entry.Register</td>
                         <td class="payload">@entry.Payload</td>
-                        <td class="bytes hide-narrow">@entry.Bytes</td>
+                        <td class="frame-bytes-cell hide-narrow">
+                            @foreach (var segment in entry.Frame)
+                            {
+                                <span class="fb fb-@segment.Field.ToString().ToLowerInvariant() @(segment.IsProblem ? "problem" : null)"
+                                      title="@segment.Label: @segment.Value">@FrameHex(segment.Bytes)</span>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -114,7 +131,15 @@
 
     [Parameter] public EventCallback OnToggleCollapsed { get; set; }
 
-    record LogEntry(long Id, HarpMessage Message, string Time, string Type, int Address, string Register, string Payload, string Bytes, bool Error, bool IsEvent);
+    record LogEntry(long Id, HarpMessage Message, string Time, string Type, int Address, string Register, string Payload, IReadOnlyList<FrameSegment> Frame, bool Error, bool IsEvent);
+
+    static readonly (string Field, string Label)[] Legend =
+    [
+        ("messagetype", "type"), ("length", "len"), ("address", "reg"), ("port", "port"),
+        ("payloadtype", "ptype"), ("timestamp", "time"), ("payload", "payload"), ("checksum", "sum")
+    ];
+
+    static string FrameHex(byte[] bytes) => string.Join(" ", bytes.Select(value => value.ToString("X2")));
 
     int? shownAddress;
 
@@ -182,7 +207,7 @@
             message.Address,
             register?.Name ?? message.Address.ToString(CultureInfo.InvariantCulture),
             payload,
-            Convert.ToHexString(message.GetPayload()),
+            HarpFrame.Describe(message, register),
             message.Error,
             message.MessageType == MessageType.Event);
     }
