@@ -51,13 +51,13 @@
         <table>
             <thead>
                 <tr>
-                    <th>Time (s)</th><th>Type</th><th>Register</th><th>Value</th>
+                    <th class="hx-timestamp">Time (s)</th><th>Type</th><th class="hx-address">Register</th><th>Value</th>
                     @if (showFields)
                     {
-                        <th class="num" title="The number of bytes after the length byte, including the checksum">Length</th>
-                        <th class="num" title="255 addresses the device itself">Port</th>
-                        <th>Payload type</th>
-                        <th>Checksum</th>
+                        <th class="num hx-length" title="The number of bytes after the length byte, including the checksum">Length</th>
+                        <th class="num hx-port" title="255 addresses the device itself">Port</th>
+                        <th class="hx-payloadtype">Payload type</th>
+                        <th class="hx-checksum">Checksum</th>
                     }
                     else
                     {
@@ -70,20 +70,25 @@
                 {
                     <tr class="@(entry.Error ? "row-error" : null) @(OnSelect.HasDelegate ? "clickable" : null)"
                         title="@(OnSelect.HasDelegate ? "Open this register" : null)" @onclick="() => OnSelect.InvokeAsync(entry.Address)">
-                        <td class="num">@entry.Time</td>
+                        <td class="num hx-timestamp">@entry.Time</td>
                         <td><span class="type type-@entry.Type.ToLowerInvariant()">@entry.Type</span></td>
-                        <td title="Address @entry.Address">@entry.Register</td>
+                        <td class="hx-address" title="Address @entry.Address">@entry.Register</td>
                         <td class="payload">@entry.Payload</td>
                         @if (showFields)
                         {
-                            <td class="num">@entry.Length</td>
-                            <td class="num">@entry.Port</td>
-                            <td>@entry.PayloadType</td>
-                            <td class="@(entry.ChecksumValid ? null : "invalid")">@entry.Checksum</td>
+                            <td class="num hx-length">@entry.Length</td>
+                            <td class="num hx-port">@entry.Port</td>
+                            <td class="hx-payloadtype">@entry.PayloadType</td>
+                            <td class="@(entry.ChecksumValid ? "hx-checksum" : "invalid")">@entry.Checksum</td>
                         }
                         else
                         {
-                            <td class="bytes hide-narrow">@entry.Hex</td>
+                            <td class="bytes hide-narrow">
+                                @foreach (var group in entry.Hex)
+                                {
+                                    <span class="hx-@group.Field" title="@group.Name">@group.Text</span>@(" ")
+                                }
+                            </td>
                         }
                     </tr>
                 }
@@ -124,8 +129,36 @@
     [Parameter] public EventCallback OnToggleCollapsed { get; set; }
 
     record LogEntry(
-        long Id, string Time, string Type, int Address, string Register, string Payload, string Hex,
+        long Id, string Time, string Type, int Address, string Register, string Payload, IReadOnlyList<HexGroup> Hex,
         int Length, int Port, string PayloadType, string Checksum, bool ChecksumValid, bool Error, bool IsEvent);
+
+    /// <summary>The bytes of one frame field, colored by field in the Hex view.</summary>
+    record HexGroup(string Field, string Name, string Text);
+
+    static IReadOnlyList<HexGroup> GetHexGroups(HarpMessage message)
+    {
+        static string Hex(ReadOnlySpan<byte> bytes) => string.Join(" ", bytes.ToArray().Select(value => value.ToString("X2")));
+
+        var bytes = message.MessageBytes;
+        var payloadStart = message.IsTimestamped ? 11 : 5;
+        if (bytes.Length < payloadStart + 1)
+            return [new("payload", "Bytes", Hex(bytes))];
+
+        var groups = new List<HexGroup>
+        {
+            new("type", "Message type", Hex(bytes.AsSpan(0, 1))),
+            new("length", "Length", Hex(bytes.AsSpan(1, 1))),
+            new("address", "Register address", Hex(bytes.AsSpan(2, 1))),
+            new("port", "Port", Hex(bytes.AsSpan(3, 1))),
+            new("payloadtype", "Payload type", Hex(bytes.AsSpan(4, 1)))
+        };
+        if (message.IsTimestamped)
+            groups.Add(new("timestamp", "Timestamp", Hex(bytes.AsSpan(5, 6))));
+        if (bytes.Length - 1 > payloadStart)
+            groups.Add(new("payload", "Payload", Hex(bytes.AsSpan(payloadStart, bytes.Length - 1 - payloadStart))));
+        groups.Add(new(message.IsValid ? "checksum" : "invalid", message.IsValid ? "Checksum" : "Checksum (invalid)", Hex(bytes.AsSpan(bytes.Length - 1))));
+        return groups;
+    }
 
     int? shownAddress;
 
@@ -192,7 +225,7 @@
             message.Address,
             register?.Name ?? message.Address.ToString(CultureInfo.InvariantCulture),
             payload,
-            string.Join(" ", message.MessageBytes.Select(value => value.ToString("X2"))),
+            GetHexGroups(message),
             message.MessageBytes[1],
             message.Port,
             message.IsTimestamped ? $"{message.PayloadType & ~PayloadType.Timestamp}, timestamped" : message.PayloadType.ToString(),
