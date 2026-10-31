@@ -27,7 +27,6 @@
 
   <ItemGroup>
     <Using Include="Harp.Generators" />
-    <InternalsVisibleTo Include="Harp.Toolkit.Web.Tests" />
   </ItemGroup>
 
   <!-- YamlDotNet deserializes device metadata through reflection, so keep these from being trimmed. -->

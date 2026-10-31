@@ -136,16 +136,6 @@ public sealed class DeviceSchema
     public int? WhoAmI => device?.WhoAmI;
 
     /// <summary>
-    /// Gets the firmware version the metadata declares, if any.
-    /// </summary>
-    public HarpVersion? FirmwareVersion => device?.FirmwareVersion;
-
-    /// <summary>
-    /// Gets the hardware versions the metadata targets, if any.
-    /// </summary>
-    public HarpVersion? HardwareTargets => device?.HardwareTargets;
-
-    /// <summary>
     /// Gets where the metadata came from, for display.
     /// </summary>
     public string Source { get; }
