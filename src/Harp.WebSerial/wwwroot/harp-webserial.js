@@ -32,6 +32,10 @@ export function getVendorId(port) {
     return port.getInfo().usbVendorId ?? -1;
 }
 
+export function isSamePort(a, b) {
+    return a === b;
+}
+
 export function getProductId(port) {
     return port.getInfo().usbProductId ?? -1;
 }

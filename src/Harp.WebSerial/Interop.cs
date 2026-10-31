@@ -29,6 +29,9 @@ static partial class Interop
     [JSImport("getProductId", ModuleName)]
     internal static partial int GetProductId(JSObject port);
 
+    [JSImport("isSamePort", ModuleName)]
+    internal static partial bool IsSamePort(JSObject a, JSObject b);
+
     [JSImport("forget", ModuleName)]
     internal static partial Task ForgetAsync(JSObject port);
 

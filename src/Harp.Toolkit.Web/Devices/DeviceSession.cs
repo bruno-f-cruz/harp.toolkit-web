@@ -24,6 +24,14 @@ public enum SessionState
 }
 
 /// <summary>
+/// Describes a serial port the user granted access to, and the device found on it.
+/// </summary>
+/// <param name="Port">The serial port.</param>
+/// <param name="Identity">The identity of the device on the port, or <see langword="null"/> if none answered.</param>
+/// <param name="IsCurrent">Whether this is the port the session has selected.</param>
+public sealed record PortProbe(WebSerialPort Port, DeviceIdentity? Identity, bool IsCurrent);
+
+/// <summary>
 /// Holds the selected serial port, the connection to its device and the register schema,
 /// shared by every page so the device stays connected while moving between them.
 /// </summary>
@@ -138,6 +146,69 @@ public sealed class DeviceSession(HttpClient http)
         await DisconnectAsync();
         SetPort(selected);
         await ConnectAsync();
+    }
+
+    /// <summary>
+    /// Asynchronously asks each port the user granted earlier for the identity of its device.
+    /// </summary>
+    /// <returns>
+    /// The task object representing the asynchronous operation. The <see cref="Task{TResult}.Result"/>
+    /// property contains one entry per granted port. Ports that are busy or silent have no identity.
+    /// </returns>
+    /// <remarks>The selected port is not opened again: its identity is the one it already reported.</remarks>
+    public async Task<IReadOnlyList<PortProbe>> ProbePortsAsync()
+    {
+        if (!IsSupported)
+            return [];
+
+        var granted = await SerialPorts.GetPortsAsync();
+        var idle = State is not (SessionState.Connecting or SessionState.Busy);
+        return await Task.WhenAll(granted.Select(async candidate =>
+        {
+            if (port is not null && candidate.IsSameAs(port.Port))
+                return new PortProbe(port.Port, IsConnected ? Identity : null, IsCurrent: true);
+            return new PortProbe(candidate, idle ? await ProbeAsync(candidate) : null, IsCurrent: false);
+        }));
+    }
+
+    /// <summary>
+    /// Asynchronously switches to a port from <see cref="ProbePortsAsync"/>, and connects to it.
+    /// </summary>
+    /// <param name="selected">The port to use.</param>
+    /// <returns>The task object representing the asynchronous operation.</returns>
+    public async Task UsePortAsync(WebSerialPort selected)
+    {
+        if (port is not null && selected.IsSameAs(port.Port))
+            return;
+
+        await DisconnectAsync();
+        SetPort(selected);
+        await ConnectAsync();
+    }
+
+    static async Task<DeviceIdentity?> ProbeAsync(WebSerialPort candidate)
+    {
+        var devicePort = new WebSerialDevicePort(candidate);
+        HarpConnection? connection = null;
+        try
+        {
+            connection = new HarpConnection(await devicePort.OpenAsync(PortMode.Protocol))
+            {
+                ReplyTimeout = TimeSpan.FromMilliseconds(500)
+            };
+            return await connection.ReadIdentityAsync();
+        }
+        catch (Exception ex) when (ex is TimeoutException or IOException or InvalidOperationException or InvalidDataException)
+        {
+            // The port is in use, or nothing on it speaks Harp.
+            return null;
+        }
+        finally
+        {
+            if (connection is not null)
+                await connection.DisposeAsync();
+            try { await devicePort.CloseAsync(); } catch (IOException) { }
+        }
     }
 
     /// <summary>

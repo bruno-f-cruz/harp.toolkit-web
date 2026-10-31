@@ -2109,6 +2109,58 @@ label.btn {
   }
 }
 
+/* Port picker: a menu of the granted ports, named by the device on each. */
+.port-picker {
+  position: relative;
+}
+
+.port-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+}
+
+.port-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.port-item:hover,
+.port-item.current {
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+}
+
+.port-add {
+  margin-top: 2px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+  color: var(--brand);
+}
+
+.port-note {
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 /* Medium screens: a narrower register list. */
 @media (max-width: 1200px) {
   .device-workspace {

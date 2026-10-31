@@ -34,10 +34,46 @@
         }
         <span class="spacer"></span>
         @ChildContent
-        <button class="btn" disabled="@(Session.State is SessionState.Connecting or SessionState.Busy)" @onclick="Session.SelectPortAsync"
-                title="Choose which serial port to use">
-            @Icons.Plug <span class="hide-narrow">@(Session.Port is null ? "Select port" : "Change port")</span>
-        </button>
+        <div class="port-picker">
+            <button class="btn" disabled="@(Session.State is SessionState.Connecting or SessionState.Busy)" @onclick="TogglePortsAsync"
+                    aria-expanded="@menuOpen.ToString().ToLowerInvariant()" title="Choose which serial port to use">
+                @Icons.Plug <span class="hide-narrow">@(Session.Port is null ? "Select port" : "Change port")</span>
+            </button>
+            @if (menuOpen)
+            {
+                <div class="port-menu" role="menu">
+                    @if (ports is null)
+                    {
+                        <div class="port-note">Asking each port for its device…</div>
+                    }
+                    else
+                    {
+                        @foreach (var probe in ports)
+                        {
+                            <button class="port-item @(probe.IsCurrent ? "current" : "")" role="menuitem" @onclick="() => UseAsync(probe)">
+                                <strong>@(probe.Identity?.DisplayName ?? "No Harp device answered")</strong>
+                                <span class="chips">
+                                    <span class="chip">@Describe(probe.Port)</span>
+                                    @if (probe.Identity?.SerialNumber is { } serial)
+                                    {
+                                        <span class="chip">SN @serial.ToString("x4")</span>
+                                    }
+                                    @if (probe.IsCurrent)
+                                    {
+                                        <span class="chip">Selected</span>
+                                    }
+                                </span>
+                            </button>
+                        }
+                        @if (ports.Count == 0)
+                        {
+                            <div class="port-note">No ports yet. Add one to let this page use it.</div>
+                        }
+                    }
+                    <button class="port-item port-add" role="menuitem" @onclick="AddAsync">Add port…</button>
+                </div>
+            }
+        </div>
         @if (Session.IsConnected)
         {
             <button class="btn" @onclick="Session.DisconnectAsync">Disconnect</button>
@@ -57,6 +93,37 @@
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    bool menuOpen;
+    IReadOnlyList<PortProbe>? ports;
+
+    async Task TogglePortsAsync()
+    {
+        menuOpen = !menuOpen;
+        ports = null;
+        if (!menuOpen)
+            return;
+
+        StateHasChanged();
+        var probed = await Session.ProbePortsAsync();
+        if (menuOpen)
+            ports = probed;
+    }
+
+    async Task UseAsync(PortProbe probe)
+    {
+        menuOpen = false;
+        await Session.UsePortAsync(probe.Port);
+    }
+
+    async Task AddAsync()
+    {
+        menuOpen = false;
+        await Session.SelectPortAsync();
+    }
+
+    static string Describe(Harp.WebSerial.WebSerialPort port) =>
+        port.UsbVendorId is { } vendor ? $"USB {vendor:x4}:{port.UsbProductId:x4}" : "Serial port";
 
     string StateText => Session.State switch
     {

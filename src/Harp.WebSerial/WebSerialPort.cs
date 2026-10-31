@@ -55,6 +55,13 @@ public sealed class WebSerialPort : IAsyncDisposable
     public ushort? UsbProductId { get; }
 
     /// <summary>
+    /// Returns a value indicating whether another object represents the same browser serial port.
+    /// </summary>
+    /// <param name="other">The port to compare with.</param>
+    /// <returns><see langword="true"/> if both objects wrap the same port.</returns>
+    public bool IsSameAs(WebSerialPort other) => Interop.IsSamePort(port, other.port);
+
+    /// <summary>
     /// Gets a value indicating whether the port is open.
     /// </summary>
     public bool IsOpen => handle is not null;
