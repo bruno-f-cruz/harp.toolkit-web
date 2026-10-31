@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using Bonsai.Harp;
 
 namespace Harp.Toolkit.Web.Devices;
@@ -162,9 +162,9 @@ public sealed class DeviceSchema
     /// <param name="source">Where the metadata came from, for display.</param>
     /// <returns>The schema of the core registers and the device registers.</returns>
     /// <remarks>
-    /// Unlike code generation, this does not reject metadata that breaks a rule the generator
-    /// enforces, such as a default value outside the declared range: published device files
-    /// sometimes do, and their registers can still be read and written.
+    /// Unlike code generation, this does not validate the metadata. Harp.Generators 0.9.0 treats a
+    /// missing default value as 0, so it rejects any register that declares a minimum above zero
+    /// without a default, which several registers of the published Behavior device do.
     /// </remarks>
     /// <exception cref="YamlDotNet.Core.YamlException">The text is not a device metadata document.</exception>
     public static DeviceSchema Parse(string yaml, string source)

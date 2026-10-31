@@ -1,4 +1,4 @@
-using Bonsai.Harp;
+﻿using Bonsai.Harp;
 using Harp.Toolkit.Web.Devices;
 
 namespace Harp.Toolkit.Web.Tests.Devices;
@@ -108,9 +108,9 @@ public sealed class DeviceSchemaTests
     }
 
     [TestMethod]
-    public void Parse_DefaultOutsideRange_StillLoads()
+    public void Parse_MinimumWithoutDefault_StillLoads()
     {
-        // Published device files, such as Behavior's, declare defaults the generator rejects.
+        // Harp.Generators checks a missing default as 0, and rejects it against a minimum above zero.
         var yaml = TestDevice.Replace("    minValue: -100", "    minValue: 1");
 
         var schema = DeviceSchema.Parse(yaml, "test");
