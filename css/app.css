@@ -1943,6 +1943,326 @@ label.btn {
   }
 }
 
+/* Verify page: setup panels before a run, then live results grouped by suite. */
+.workflow.verify {
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.workflow.verify .workflow-header p {
+  margin-bottom: 8px;
+}
+
+.callout {
+  border-radius: 8px;
+  align-items: flex-start;
+}
+
+.callout svg {
+  margin-top: 3px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.panel h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.panel .step-summary {
+  margin: 0;
+}
+
+.panel .step-summary .link-button {
+  margin-left: 8px;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+}
+
+.option,
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+.option + .option {
+  border-top: 1px solid var(--surface-2);
+}
+
+.option.column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  cursor: default;
+}
+
+div.option:not(.column) {
+  cursor: default;
+}
+
+.option-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.option-text small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* A checkbox drawn as a switch. */
+.toggle {
+  flex: none;
+  appearance: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+
+.toggle:checked {
+  border-color: var(--brand);
+  background: var(--brand);
+}
+
+.toggle:checked::after {
+  transform: translateX(16px);
+}
+
+.toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.toggle:focus-visible {
+  box-shadow: var(--focus);
+  outline: none;
+}
+
+.clock-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 0 14px;
+}
+
+.clock-options .field input[type="text"] {
+  width: 120px;
+}
+
+.workflow.verify > .row {
+  align-items: center;
+}
+
+.btn-large {
+  height: 40px;
+  padding: 0 18px;
+  font-size: 15px;
+}
+
+.pill {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pill.passed {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.pill.failed,
+.pill.error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.pill.skipped {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.run-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.run-title .spacer {
+  flex: 1;
+}
+
+.run-title h2 {
+  font-size: 20px;
+}
+
+.run-title .detail {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.progress > div.has-failures {
+  background: linear-gradient(90deg, var(--brand), var(--brand) 70%, var(--error));
+}
+
+.status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.status-filters button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font: 500 13px var(--font);
+  cursor: pointer;
+}
+
+.status-filters button span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.status-filters button[aria-checked="true"] {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+
+.status-filters button[aria-checked="true"] span {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.status-filters button.failed:not([aria-checked="true"]) span,
+.status-filters button.error:not([aria-checked="true"]) span {
+  color: var(--error);
+  font-weight: 700;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.suite {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.suite header {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.suite h3 {
+  margin: 0;
+  font: 600 14px var(--mono);
+}
+
+.suite header p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 10px 16px;
+}
+
+.check + .check {
+  border-top: 1px solid var(--surface-2);
+}
+
+.check .pill {
+  justify-self: start;
+  margin-top: 1px;
+}
+
+.check-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.check-text strong {
+  font: 500 13px var(--mono);
+}
+
+.check-text small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.check-message {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.running-note {
+  text-align: center;
+}
+
 /* Medium screens: a narrower register list. */
 @media (max-width: 1200px) {
   .device-workspace {
