@@ -1119,8 +1119,9 @@ label.btn {
 }
 
 .log td.payload {
+  min-width: 18em;
   white-space: normal;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .log .row-error td {
@@ -1815,9 +1816,56 @@ label.btn {
   gap: 12px;
 }
 
-.live-value .frame {
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+/* Frame bytes in the message log, grouped and tinted by field. */
+.fb {
+  --tint: var(--muted);
+  display: inline-block;
+  padding: 0 3px;
+  border-bottom: 2px solid color-mix(in srgb, var(--tint) 75%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--tint) 13%, transparent);
+  white-space: nowrap;
+}
+
+.fb + .fb {
+  margin-left: 3px;
+}
+
+.fb-address {
+  --tint: var(--code-title);
+}
+
+.fb-timestamp {
+  --tint: var(--code-number);
+}
+
+.fb-payload {
+  --tint: var(--brand);
+}
+
+.fb-checksum {
+  --tint: var(--ok);
+}
+
+.fb.problem {
+  --tint: var(--error);
+  color: var(--error);
+  font-weight: 600;
+}
+
+.log td.frame-bytes-cell {
+  white-space: nowrap;
+}
+
+.frame-legend {
+  margin-left: 8px;
+  font: 10px var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.frame-legend .fb + .fb {
+  margin-left: 2px;
 }
 
 .log tr.selected td {
