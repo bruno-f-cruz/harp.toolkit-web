@@ -23,22 +23,28 @@
     </header>
 
     <section class="live-value" aria-live="polite">
-        <div class="live-value-text">
-            <span class="label">Current value</span>
-            @if (Session.GetLatest(Register.Address) is { } latest)
-            {
-                <span class="value">@Summarize(latest)</span>
-                <span class="detail">
-                    @latest.MessageType@(latest.TryGetTimestamp(out var timestamp) ? $" at {timestamp.ToString("0.000", CultureInfo.InvariantCulture)} s" : null)
-                    · bytes @Convert.ToHexString(latest.GetPayload())
-                </span>
-            }
-            else
-            {
-                <span class="value muted">@(Session.IsConnected ? "Not read yet" : "Connect a device to read")</span>
-            }
+        <div class="live-value-main">
+            <div class="live-value-text">
+                <span class="label">Current value</span>
+                @if (Session.GetLatest(Register.Address) is { } latest)
+                {
+                    <span class="value">@Summarize(latest)</span>
+                    <span class="detail">
+                        @latest.MessageType@(latest.TryGetTimestamp(out var timestamp) ? $" at {timestamp.ToString("0.000", CultureInfo.InvariantCulture)} s" : null)
+                        · <button class="link-button" aria-expanded="@(showFrame ? "true" : "false")" @onclick="() => showFrame = !showFrame">@(showFrame ? "Hide frame" : "Show frame")</button>
+                    </span>
+                }
+                else
+                {
+                    <span class="value muted">@(Session.IsConnected ? "Not read yet" : "Connect a device to read")</span>
+                }
+            </div>
+            <button class="btn" disabled="@(!Session.IsConnected || busy)" @onclick="ReadAsync">Read</button>
         </div>
-        <button class="btn" disabled="@(!Session.IsConnected || busy)" @onclick="ReadAsync">Read</button>
+        @if (showFrame && Session.GetLatest(Register.Address) is { } message)
+        {
+            <FrameView Message="message" Register="Register" />
+        }
     </section>
 
     <section class="fields">
@@ -89,6 +95,7 @@
     RegisterSchema? shown;
     bool edited;
     bool busy;
+    bool showFrame;
     string? status;
     bool statusError;
     Timer? refresh;

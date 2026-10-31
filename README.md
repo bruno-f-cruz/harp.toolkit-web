@@ -5,7 +5,7 @@
 | Page | What it does | Browsers |
 |---|---|---|
 | **Generate** | Generates the C# and Python interfaces and the firmware of a device from its `device.yml` | All |
-| **Device** | Connects to a device over USB serial and builds a control panel for it from its `device.yml`: every register gets controls for its payload (checkboxes for bit masks, choices for group masks, switches, text and number fields with their limits), filled from a live read. Also shows the device identity, switches it between Standby and Active, and decodes every message it sends | Chrome, Edge |
+| **Device** | Connects to a device over USB serial and builds a control panel for it from its `device.yml`: every register gets controls for its payload (a switch per flag for bit masks, choices for group masks, switches for booleans, text and number fields with their limits), filled from a live read. Also shows the device identity, switches it between Standby and Active, decodes every message it sends, and breaks any message down into the fields of its frame | Chrome, Edge |
 | **Firmware** | Updates the firmware of an ATxmega device from a `.hex` release file, as four steps: connect the device, choose the file, confirm (installed and new version side by side, with hardware and downgrade checks), and update. Also recovers a device left in its bootloader | Chrome, Edge |
 
 The device pages use the [Web Serial API](https://developer.mozilla.org/docs/Web/API/Web_Serial_API), which only Chromium-based desktop browsers implement, and only on pages served over HTTPS or from `localhost`.
@@ -14,19 +14,18 @@ The Generate page started as a copy of [harp-tech/generators-web](https://github
 
 ## Run locally
 
-This app depends on [Harp.WebSerial](../Harp.WebSerial), which is not on nuget.org yet. Build its package first. `nuget.config` restores it from the sibling folder:
-
 ```sh
-dotnet pack ../Harp.WebSerial/src/Harp.WebSerial -c Release
 dotnet run --project src/Harp.Toolkit.Web
 dotnet test
 ```
+
+The repository also holds [Harp.WebSerial](src/Harp.WebSerial), the library that gives Blazor WebAssembly apps serial ports through Web Serial. It is meant to become its own package.
 
 ## How it works
 
 Everything runs as .NET in WebAssembly. The parts that cannot run in the browser are replaced:
 
-- **Serial ports.** `System.IO.Ports` does not work in WebAssembly. Harp.WebSerial wraps Web Serial in a `Stream`.
+- **Serial ports.** `System.IO.Ports` does not work in WebAssembly. [Harp.WebSerial](src/Harp.WebSerial) wraps Web Serial in a `Stream`.
 - **Harp messages.** Bonsai.Harp reads its serial port synchronously on a dedicated thread, which the browser cannot do. [`HarpMessageReader`](src/Harp.Toolkit.Web/Devices/HarpMessageReader.cs) is an asynchronous port of its parser. [`HarpConnection`](src/Harp.Toolkit.Web/Devices/HarpConnection.cs) matches each command to its reply. Bonsai.Harp itself is still used for message types and core register definitions.
 - **Firmware updates.** Harp.Toolkit.Core opens ports by name, so [`AtxmegaBootloader`](src/Harp.Toolkit.Web/Devices/AtxmegaBootloader.cs) follows its bootloader protocol step for step over an [`IDevicePort`](src/Harp.Toolkit.Web/Devices/IDevicePort.cs). Firmware files are still parsed by Harp.Toolkit.Core.
 - **Register controls.** The generated C# interface cannot be compiled in the browser without shipping Roslyn, so [`DeviceSchema`](src/Harp.Toolkit.Web/Devices/DeviceSchema.cs) reads the same metadata Harp.Generators reads and lays out each payload the way the generated code does: member offsets, masks and shifts, bool and string members, and primitive types spanning several elements. [`PayloadCodec`](src/Harp.Toolkit.Web/Devices/PayloadCodec.cs) then decodes and encodes payloads with it. Members with a custom converter are shown as raw elements.
@@ -55,4 +54,4 @@ The GitHub workflows come from generators-web:
 - Every hour, the device list is rebuilt from the whoami registry and the site is redeployed if it changed.
 - Every day, a pull request is opened if a new Harp.Generators release is on NuGet.
 
-They need Harp.WebSerial to be restorable in CI, from nuget.org or a feed, before they can build.
+They are disabled while the site is deployed by hand (#5).

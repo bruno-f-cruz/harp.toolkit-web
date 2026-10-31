@@ -31,6 +31,22 @@
                 title="@(Collapsed ? "Show the message log" : "Hide the message log")">@(Collapsed ? "Show" : "Hide")</button>
     }
 </div>
+@if (inspected is { } frame && !Collapsed)
+{
+    <div class="log-inspector">
+        <div class="log-inspector-header">
+            <span class="label">Frame</span>
+            <span class="detail">@frame.Type · @frame.Register@(frame.Time.Length > 0 ? $" · {frame.Time} s" : null)</span>
+            <span class="spacer"></span>
+            @if (OnSelect.HasDelegate)
+            {
+                <button class="link-button" @onclick="() => OnSelect.InvokeAsync(frame.Address)">Open @frame.Register</button>
+            }
+            <button class="btn btn-icon btn-ghost" title="Close the frame" aria-label="Close the frame" @onclick="() => inspected = null">✕</button>
+        </div>
+        <FrameView Message="frame.Message" Register="Session.Schema.Registers.GetValueOrDefault(frame.Address)" />
+    </div>
+}
 <div class="log" role="log" aria-live="off" hidden="@Collapsed">
     @if (visible.Count == 0)
     {
@@ -51,8 +67,10 @@
             <tbody>
                 @foreach (var entry in visible)
                 {
-                    <tr class="@(entry.Error ? "row-error" : null) @(OnSelect.HasDelegate ? "clickable" : null)"
-                        title="@(OnSelect.HasDelegate ? "Open this register" : null)" @onclick="() => OnSelect.InvokeAsync(entry.Address)">
+                    var selected = entry.Id == inspected?.Id;
+                    <tr class="clickable @(entry.Error ? "row-error" : null) @(selected ? "selected" : null)"
+                        title="Show the frame" aria-selected="@(selected ? "true" : "false")"
+                        @onclick="() => inspected = entry">
                         <td class="num">@entry.Time</td>
                         <td><span class="type type-@entry.Type.ToLowerInvariant()">@entry.Type</span></td>
                         <td title="Address @entry.Address">@entry.Register</td>
@@ -81,6 +99,8 @@
     double rate;
 
     bool onlySelected;
+    long nextId;
+    LogEntry? inspected;
 
     [Parameter] public EventCallback<int> OnSelect { get; set; }
 
@@ -94,7 +114,7 @@
 
     [Parameter] public EventCallback OnToggleCollapsed { get; set; }
 
-    record LogEntry(string Time, string Type, int Address, string Register, string Payload, string Bytes, bool Error, bool IsEvent);
+    record LogEntry(long Id, HarpMessage Message, string Time, string Type, int Address, string Register, string Payload, string Bytes, bool Error, bool IsEvent);
 
     int? shownAddress;
 
@@ -155,6 +175,8 @@
         }
 
         return new LogEntry(
+            nextId++,
+            message,
             time,
             message.MessageType.ToString(),
             message.Address,

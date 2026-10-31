@@ -1,6 +1,6 @@
 @using System.Globalization
 
-<div class="field-row">
+<div class="field-row @(Field.Kind == FieldKind.Flags ? "wide" : null)">
     <div class="field-label">
         <span class="field-name">@Field.Name</span>
         @if (!string.IsNullOrWhiteSpace(Field.Description))
@@ -21,7 +21,7 @@
         {
             case FieldKind.Bool:
                 <label class="switch">
-                    <input id="@Id" type="checkbox" checked="@Value.Bool" disabled="@ReadOnly"
+                    <input id="@Id" type="checkbox" class="toggle" checked="@Value.Bool" disabled="@ReadOnly"
                            @onchange="e => Update(() => Value.Bool = e.Value is true)" />
                     <span>@(Value.Bool ? "On" : "Off")</span>
                 </label>
@@ -52,16 +52,35 @@
                 break;
 
             case FieldKind.Flags:
-                <div class="flag-chips">
-                    @foreach (var option in Field.Options)
-                    {
-                        var isSet = (Value.Bits & option.Value) == option.Value;
-                        <label class="flag-chip @(isSet ? "on" : null)" title="@option.Description">
-                            <input type="checkbox" checked="@isSet" disabled="@ReadOnly"
-                                   @onchange="e => Update(() => Value.Bits = e.Value is true ? Value.Bits | option.Value : Value.Bits & ~option.Value)" />
-                            @option.Name
-                        </label>
-                    }
+                <div class="flags">
+                    <div class="flags-header">
+                        <code title="The combined value of the flags">0x@(Value.Bits.ToString("X2"))</code>
+                        <span class="detail">@SetCount of @Field.Options.Count on</span>
+                        @if (!ReadOnly)
+                        {
+                            <span class="spacer"></span>
+                            <button class="link-button" @onclick="() => Update(() => Value.Bits = AllBits)">All</button>
+                            <button class="link-button" @onclick="() => Update(() => Value.Bits = 0)">None</button>
+                        }
+                    </div>
+                    <div class="flag-list">
+                        @foreach (var option in Field.Options)
+                        {
+                            var isSet = (Value.Bits & option.Value) == option.Value;
+                            <label class="flag @(isSet ? "on" : null)">
+                                <input type="checkbox" class="toggle" checked="@isSet" disabled="@ReadOnly"
+                                       @onchange="e => Update(() => Value.Bits = e.Value is true ? Value.Bits | option.Value : Value.Bits & ~option.Value)" />
+                                <span class="flag-text">
+                                    <span class="flag-name">@option.Name</span>
+                                    @if (!string.IsNullOrWhiteSpace(option.Description))
+                                    {
+                                        <small>@option.Description</small>
+                                    }
+                                </span>
+                                <code class="flag-bit">0x@(option.Value.ToString("X2"))</code>
+                            </label>
+                        }
+                    </div>
                 </div>
                 break;
 
@@ -111,6 +130,10 @@
         (null, { } max) => $"At most {max}",
         _ => null
     };
+
+    ulong AllBits => Field.Options.Aggregate(0UL, (bits, option) => bits | option.Value);
+
+    int SetCount => Field.Options.Count(option => option.Value != 0 && (Value.Bits & option.Value) == option.Value);
 
     async Task SelectChoice(ChangeEventArgs e)
     {

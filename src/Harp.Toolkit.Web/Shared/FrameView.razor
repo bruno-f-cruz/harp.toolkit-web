@@ -1,0 +1,35 @@
+@using Bonsai.Harp
+
+<div class="frame" role="group" aria-label="Message frame">
+    @foreach (var segment in HarpFrame.Describe(Message, Register))
+    {
+        <div class="frame-field field-@segment.Field.ToString().ToLowerInvariant() @(segment.IsProblem ? "problem" : null)"
+             title="@Describe(segment)">
+            <code class="frame-bytes">@Hex(segment.Bytes)</code>
+            <span class="frame-label">@segment.Label</span>
+            <span class="frame-value">@segment.Value</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public HarpMessage Message { get; set; } = null!;
+
+    [Parameter] public RegisterSchema? Register { get; set; }
+
+    static string Hex(byte[] bytes) =>
+        bytes.Length == 0 ? "—" : string.Join(" ", bytes.Select(value => value.ToString("X2")));
+
+    static string Describe(FrameSegment segment) => segment.Field switch
+    {
+        FrameField.MessageType => "Byte 0: message type (1 Read, 2 Write, 3 Event), with bit 3 set when the device reports an error.",
+        FrameField.Length => "Byte 1: the number of bytes after this one, including the checksum.",
+        FrameField.Address => "Byte 2: the register address.",
+        FrameField.Port => "Byte 3: the port; 255 addresses the device itself.",
+        FrameField.PayloadType => "Byte 4: the payload type, with bit 4 set when a timestamp follows.",
+        FrameField.Timestamp => "6 bytes: seconds (UInt32) and 32-microsecond ticks (UInt16) of the device clock, little-endian.",
+        FrameField.Payload => "The register value, little-endian.",
+        FrameField.Checksum => "Last byte: the sum of every other byte, modulo 256.",
+        _ => segment.Label
+    };
+}
